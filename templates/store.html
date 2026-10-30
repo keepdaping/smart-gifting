@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% from "_macros.html" import media %}
+{% block title %}{{ merchant.name }}{% endblock %}
+
+{% block content %}
+<section class="store-hero" style="--accent: {{ merchant.accent or '#12805C' }};">
+    <div class="container">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb sg-crumb">
+                <li class="breadcrumb-item"><a href="{{ url_for('index') }}">Marketplace</a></li>
+                <li class="breadcrumb-item active" aria-current="page">{{ merchant.name }}</li>
+            </ol>
+        </nav>
+        <div class="store-hero__card">
+            <div class="store-hero__row">
+                <span class="store-hero__mark"><i class="bi {{ merchant.icon or 'bi-shop' }}" aria-hidden="true"></i></span>
+                <div class="store-hero__copy">
+                    <span class="store-category-badge">{{ merchant.category }}</span>
+                    <h1 class="store-hero__name">{{ merchant.name }}</h1>
+                    <p class="store-hero__desc">{{ merchant.description }}</p>
+                    <div class="store-hero__trust">
+                        <span><i class="bi bi-patch-check me-1" aria-hidden="true"></i>Redeem in store</span>
+                        <span><i class="bi bi-shield-check me-1" aria-hidden="true"></i>One-time voucher</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="container py-4 py-lg-5">
+    <div class="section-heading">
+        <div>
+            <span class="eyebrow eyebrow--muted">Pick something they'll love</span>
+            <h2 class="h2 mb-1">Gift packages</h2>
+        </div>
+        <span class="results-pill">{{ products|length }} available</span>
+    </div>
+
+    {% if products %}
+    <div class="row g-3 g-lg-4">
+        {% for p in products %}
+        <div class="col-12 col-sm-6 col-lg-4">
+            <article class="product-card">
+                {{ media(p.image_url or merchant.image_url, merchant.icon, merchant.accent, p.title) }}
+                <div class="product-card__body">
+                    <h3 class="product-card__title">{{ p.title }}</h3>
+                    <p class="product-card__desc">{{ p.description }}</p>
+                    <div class="product-card__foot">
+                        <span class="price"><span class="price__label">Gift value</span>{{ p.monetary_value|ugx }}</span>
+                        <a href="{{ url_for('buy_gift', product_id=p.id) }}" class="btn btn-primary btn-sm px-3">
+                            <i class="bi bi-gift me-1" aria-hidden="true"></i> Choose gift
+                        </a>
+                    </div>
+                </div>
+            </article>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-icon"><i class="bi bi-box2"></i></div>
+        <h3 class="h5">No gifts here yet</h3>
+        <p class="text-muted mb-4">{{ merchant.name }} hasn't published any packages. Browse another store in the meantime.</p>
+        <a href="{{ url_for('index') }}" class="btn btn-primary">Browse all stores</a>
+    </div>
+    {% endif %}
+</section>
+{% endblock %}

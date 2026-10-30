@@ -1,0 +1,17 @@
+{% macro media(image, icon, accent, alt) -%}
+<div class="media-tile" role="img" aria-label="{{ alt }}"
+     style="position:relative;display:grid;place-items:center;overflow:hidden;aspect-ratio:16/10;background:{{ accent or '#12805C' }};color:#fff;">
+    <i class="bi {{ icon or 'bi-gift' }}" aria-hidden="true" style="font-size:2.5rem;"></i>
+    {% if image %}
+    <img src="{{ image }}" alt="" loading="lazy"
+         style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;"
+         onerror="this.remove()">
+    {% endif %}
+</div>
+{%- endmacro %}
+
+{% macro field_error(errors, field) -%}
+{% if errors.get(field) %}
+<div class="invalid-feedback d-block">{{ errors[field] }}</div>
+{% endif %}
+{%- endmacro %}

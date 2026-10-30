@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+{% from "_macros.html" import media %}
+{% block title %}Cashier portal{% endblock %}
+
+{% block content %}
+{% if not cashier %}
+{# ------------------------------ Signed-out: store + PIN ------------------------------ #}
+<div class="container py-5" style="max-width: 460px;">
+    <div class="text-center mb-4">
+        <div class="empty-icon mx-auto mb-3"><i class="bi bi-shield-lock-fill" aria-hidden="true"></i></div>
+        <span class="eyebrow eyebrow--muted">Merchant access</span>
+        <h1 class="h2 mb-2">Cashier portal</h1>
+        <p class="text-muted">Sign in to your store to verify and redeem a customer's voucher.</p>
+    </div>
+
+    <form method="POST" action="{{ url_for('merchant_login') }}" class="panel cashier-login-card needs-validation" novalidate>
+        {{ csrf_field() }}
+        <input type="hidden" name="prefill" value="{{ prefill }}">
+        <div class="mb-3">
+            <label for="merchant_id" class="form-label">Select your store</label>
+            <select class="form-select form-select-lg" id="merchant_id" name="merchant_id" required>
+                <option value="" selected disabled>Choose your store</option>
+                {% for s in stores %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}
+            </select>
+            <div class="invalid-feedback">Choose the store you are working at.</div>
+        </div>
+        <div class="mb-4">
+            <label for="pin" class="form-label">Cashier PIN</label>
+            <input type="password" class="form-control form-control-lg cashier-pin" id="pin" name="pin" inputmode="numeric"
+                   autocomplete="current-password" required minlength="4" maxlength="12" placeholder="••••">
+            <div class="invalid-feedback">Enter your cashier PIN.</div>
+        </div>
+        <button type="submit" class="btn btn-primary btn-lg w-100"><i class="bi bi-box-arrow-in-right me-2" aria-hidden="true"></i>Sign in securely</button>
+        <p class="small text-muted text-center mt-3 mb-0"><i class="bi bi-info-circle me-1" aria-hidden="true"></i>Demo portal uses the configured shared cashier PIN.</p>
+    </form>
+    {% if prefill %}
+    <p class="text-center small text-muted mt-3">After signing in, code <code>{{ prefill }}</code> will be ready to check.</p>
+    {% endif %}
+</div>
+
+{% else %}
+{# ------------------------------ Signed-in portal ------------------------------ #}
+<div class="container py-4 py-lg-5">
+    <div class="cashier-heading d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+        <div>
+            <span class="eyebrow eyebrow--muted">Store operations</span>
+            <h1 class="h2 mb-1">Cashier dashboard</h1>
+            <p class="text-muted mb-0">Signed in at <strong class="text-dark">{{ cashier.name }}</strong></p>
+        </div>
+        <form method="POST" action="{{ url_for('merchant_logout') }}">
+            {{ csrf_field() }}
+            <button type="submit" class="btn btn-outline-dark"><i class="bi bi-box-arrow-right me-1" aria-hidden="true"></i>Sign out</button>
+        </form>
+    </div>
+
+    <div class="row g-3 mb-4" aria-label="Today's redemption summary">
+        <div class="col-6 col-lg-3"><div class="stat"><div class="stat__n">{{ stats.redeemed_n }}</div><div class="stat__l">Redeemed today</div></div></div>
+        <div class="col-6 col-lg-3"><div class="stat"><div class="stat__n stat__n--money">{{ stats.redeemed_value|ugx }}</div><div class="stat__l">Value redeemed today</div></div></div>
+        <div class="col-6 col-lg-3"><div class="stat {{ 'stat--alert' if stats.rejected }}"><div class="stat__n">{{ stats.rejected }}</div><div class="stat__l">Rejected attempts today</div></div></div>
+        <div class="col-6 col-lg-3"><div class="stat"><div class="stat__n">{{ stats.outstanding_n }}</div><div class="stat__l">Vouchers still unused</div></div></div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-5">
+            <div class="panel">
+                <span class="eyebrow eyebrow--muted">Fast, secure checkout</span>
+                <h2 class="h4 mt-1 mb-3">Verify a voucher</h2>
+                <form method="POST" action="{{ url_for('merchant_lookup') }}" id="lookupForm" class="mb-0">
+                    {{ csrf_field() }}
+                    <label for="voucher_code" class="form-label">Voucher code</label>
+                    <div class="input-group input-group-lg">
+                        <input type="text" id="voucher_code" name="voucher_code" class="form-control code-input"
+                               placeholder="GIFT-XXXX-XXXX" value="{{ prefill or (result.code if result else '') }}"
+                               autocomplete="off" autocapitalize="characters" spellcheck="false" required maxlength="24" autofocus>
+                        <button class="btn btn-dark px-4" type="submit">Check</button>
+                    </div>
+                    <div class="form-text">Capital letters and the hyphens are optional.</div>
+                </form>
+
+                {% if result %}
+                <hr class="my-4">
+                {% if result.state == 'active' %}
+                <div class="verdict verdict--ok" role="status" aria-live="polite">
+                    <div class="verdict__head"><i class="bi bi-check-circle-fill"></i> Valid. Ready to redeem.</div>
+                    <dl class="verdict__list">
+                        <div><dt>Gift</dt><dd>{{ result.voucher.product_title }}</dd></div>
+                        <div><dt>Value</dt><dd class="fw-semibold">{{ result.voucher.monetary_value|ugx }}</dd></div>
+                        <div><dt>From</dt><dd>{{ result.voucher.sender_name }}</dd></div>
+                        <div><dt>Sent to</dt><dd>{{ result.voucher.recipient_phone|phone }}</dd></div>
+                        <div><dt>Created</dt><dd>{{ result.voucher.created_at|eat }}</dd></div>
+                    </dl>
+                    <form method="POST" action="{{ url_for('merchant_redeem') }}" data-confirm="Redeem {{ result.code }} now? This cannot be undone.">
+                        {{ csrf_field() }}
+                        <input type="hidden" name="voucher_code" value="{{ result.code }}">
+                        <button type="submit" class="btn btn-success btn-lg w-100 fw-semibold"
+                                data-loading-text="Processing redemption…">
+                            <i class="bi bi-check2-circle me-2"></i><span data-submit-label>Redeem and hand over gift</span>
+                        </button>
+                    </form>
+                </div>
+                {% elif result.state == 'used' %}
+                <div class="verdict verdict--warn" role="status" aria-live="polite">
+                    <div class="verdict__head"><i class="bi bi-exclamation-triangle-fill"></i> Already redeemed. Do not hand over the gift.</div>
+                    <dl class="verdict__list">
+                        <div><dt>Gift</dt><dd>{{ result.voucher.product_title }}</dd></div>
+                        <div><dt>Value</dt><dd>{{ result.voucher.monetary_value|ugx }}</dd></div>
+                        <div><dt>Redeemed</dt><dd>{{ result.voucher.redeemed_at|eat if result.voucher.redeemed_at else 'Earlier (time not recorded)' }}</dd></div>
+                    </dl>
+                </div>
+                {% elif result.state == 'wrong_store' %}
+                <div class="verdict verdict--bad" role="alert">
+                    <div class="verdict__head"><i class="bi bi-shop-window"></i> Wrong store. Do not redeem.</div>
+                    <p class="mb-0">This code is valid, but for <strong>{{ result.other_store }}</strong>. Ask the customer to visit that store.</p>
+                </div>
+                {% else %}
+                <div class="verdict verdict--bad" role="alert">
+                    <div class="verdict__head"><i class="bi bi-question-circle-fill"></i> Code not found.</div>
+                    <p class="mb-0">Check for typing mistakes. Codes use letters and digits, and never include 0, O, 1 or I.</p>
+                </div>
+                {% endif %}
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="col-lg-7">
+            <div class="panel p-0 overflow-hidden">
+                <div class="d-flex justify-content-between align-items-center p-3 p-lg-4 pb-3">
+                    <div>
+                        <span class="eyebrow eyebrow--muted">Accountability</span>
+                        <h2 class="h4 mb-0">Recent redemption activity</h2>
+                        <p class="small text-muted mb-0">Latest checks and redemption outcomes for this store.</p>
+                    </div>
+                    <span class="results-pill">{{ trail|length }} recent</span>
+                </div>
+
+                {% if trail %}
+                <div class="table-responsive">
+                    <table class="table audit-table align-middle mb-0">
+                        <caption class="visually-hidden">Recent voucher checks for {{ cashier.name }}</caption>
+                        <thead><tr><th>When</th><th>Code</th><th>Gift</th><th class="text-end">Result</th></tr></thead>
+                        <tbody>
+                        {% for row in trail %}
+                        {% set label, color, icon = OUTCOMES.get(row.outcome, (row.outcome, 'secondary', 'bi-dot')) %}
+                        <tr>
+                            <td class="text-nowrap small">{{ row.created_at|eat("%d %b, %I:%M %p") }}</td>
+                            <td><code>{{ row.voucher_code }}</code></td>
+                            <td class="small">
+                                {% if row.product_title %}{{ row.product_title }}<span class="text-muted d-block">{{ row.monetary_value|ugx }}</span>
+                                {% else %}<span class="text-muted">No matching voucher</span>{% endif %}
+                            </td>
+                            <td class="text-end"><span class="outcome outcome--{{ color }}"><i class="bi {{ icon }}"></i> {{ label }}</span></td>
+                        </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="empty-state empty-state--tight">
+                    <div class="empty-icon"><i class="bi bi-clock-history"></i></div>
+                    <h3 class="h6">No activity yet</h3>
+                    <p class="text-muted small mb-0">Redemptions and rejected codes will show up here as soon as you check a voucher.</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

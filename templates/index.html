@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% from "_macros.html" import media %}
+{% block title %}Send a gift voucher{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <div class="container">
+        <div class="row align-items-center g-5">
+            <div class="col-lg-7">
+                <span class="eyebrow"><i class="bi bi-stars me-2" aria-hidden="true"></i>Thoughtful gifting, made simple</span>
+                <h1 class="hero__title">Send a voucher.<br>They collect it at the till.</h1>
+                <p class="hero__lead">Choose a local favourite, add your message, and share a gift they can redeem in person.</p>
+
+                <form class="search" role="search" id="searchForm" autocomplete="off" action="{{ url_for('index') }}" method="GET">
+                    <label for="storeSearch" class="visually-hidden">Search stores and gifts</label>
+                    <i class="bi bi-search search__icon" aria-hidden="true"></i>
+                    <input id="storeSearch" type="search" class="search__input" name="q"
+                           value="{{ request.args.get('q', '') }}"
+                           placeholder="Search stores or gifts: cake, earbuds, coffee…" inputmode="search" enterkeyhint="search">
+                    <button type="button" class="search__clear" id="clearSearch" hidden aria-label="Clear search"><i class="bi bi-x-lg"></i></button>
+                    <kbd class="search__kbd d-none d-md-inline" aria-hidden="true">/</kbd>
+                    <button class="visually-hidden" type="submit">Search</button>
+                </form>
+                <div class="hero__trust mt-3">
+                    <span><i class="bi bi-shield-check" aria-hidden="true"></i> One-time redemption</span>
+                    <span><i class="bi bi-phone" aria-hidden="true"></i> Share by WhatsApp or SMS</span>
+                </div>
+            </div>
+
+            <div class="col-lg-5 d-none d-md-block">
+                <div class="ticket ticket--hero" aria-hidden="true">
+                    <div class="ticket__top" style="--accent:#C8102E;">
+                        <span class="ticket__tag">Sample voucher</span>
+                        <div class="ticket__value">UGX 35,000</div>
+                        <div class="ticket__item">Zinger Burger Feast</div>
+                        <div class="ticket__store"><i class="bi bi-egg-fried"></i> KFC Uganda</div>
+                    </div>
+                    <div class="ticket__tear"></div>
+                    <div class="ticket__bottom">
+                        <div class="ticket__note">“Happy birthday, enjoy lunch on me!”</div>
+                        <div class="ticket__code">GIFT-7KQM-4XPD</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<div class="filterbar" id="filterbar">
+    <div class="container">
+        <div class="chips" role="group" aria-label="Filter stores by category">
+            <button type="button" class="chip is-active" data-cat="all" aria-pressed="true">All stores <span class="chip__n">{{ merchants|length }}</span></button>
+            {% for category, count in categories %}
+            <button type="button" class="chip" data-cat="{{ category }}" aria-pressed="false">
+                {% if category == 'Food' %}Fast Food{% elif category == 'Electronics' %}Tech{% else %}{{ category }}{% endif %}
+                <span class="chip__n">{{ count }}</span>
+            </button>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<section class="container py-4 py-lg-5">
+    <div class="section-heading">
+        <div>
+            <span class="eyebrow eyebrow--muted">Made for moments that matter</span>
+            <h2 class="h2 mb-1">Find their kind of gift</h2>
+            <p class="text-muted mb-0">Explore stores and ready-to-send gift packages.</p>
+        </div>
+        <p class="text-muted small mb-0" id="resultCount" aria-live="polite">{{ merchants|length }} stores</p>
+    </div>
+
+    <div class="row g-3 g-lg-4" id="storeGrid">
+        {% for m in merchants %}
+        <div class="col-12 col-sm-6 col-lg-4 col-xl-3 store-col" data-cat="{{ m.category }}"
+             data-search="{{ (m.name ~ ' ' ~ m.category ~ ' ' ~ (m.description or '') ~ ' ' ~ (m.product_titles or ''))|lower|replace('|', ' ') }}"
+             data-products="{{ m.product_titles or '' }}">
+            <article class="store-card">
+                {{ media(m.image_url, m.icon, m.accent, m.name) }}
+                <span class="store-card__cat">{{ m.category }}</span>
+                <div class="store-card__body">
+                    <h3 class="store-card__name">
+                        <a href="{{ url_for('store_catalog', merchant_id=m.id) }}" class="stretched-link">{{ m.name }}</a>
+                    </h3>
+                    <p class="store-card__desc">{{ m.description }}</p>
+                    <p class="store-card__match" hidden></p>
+                    <div class="store-card__foot">
+                        {% if m.product_count %}
+                        <span class="store-card__price">From {{ m.min_price|ugx }}</span>
+                        <span class="store-card__count">{{ m.product_count }} gift{{ '' if m.product_count == 1 else 's' }}</span>
+                        {% else %}
+                        <span class="store-card__count">Gifts coming soon</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </article>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="empty-state" id="emptyState" hidden>
+        <div class="empty-icon"><i class="bi bi-search-heart"></i></div>
+        <h3 class="h5">No stores match <span id="emptyQuery"></span></h3>
+        <p class="text-muted mb-4">Try a store name, or a gift such as “cake”, “pizza” or “earbuds”.</p>
+        <button type="button" class="btn btn-primary" id="resetFilters"><i class="bi bi-arrow-counterclockwise me-2"></i>Show all stores</button>
+    </div>
+</section>
+
+<section class="how">
+    <div class="container">
+        <span class="eyebrow eyebrow--muted">A better way to say “I'm thinking of you”</span>
+        <h2 class="h2 mb-4">A lovely gift in three simple steps</h2>
+        <ol class="how__steps">
+            <li><span class="how__n">1</span><div><strong>Choose a gift</strong><p>Pick a package from a partner store. The value is fixed, so the recipient knows what they get.</p></div></li>
+            <li><span class="how__n">2</span><div><strong>Send it</strong><p>Pay with Mobile Money, then share the voucher by WhatsApp or SMS with your message.</p></div></li>
+            <li><span class="how__n">3</span><div><strong>Collect in store</strong><p>The cashier checks the code. It works once, at that store only, then it is locked.</p></div></li>
+        </ol>
+    </div>
+</section>
+{% endblock %}

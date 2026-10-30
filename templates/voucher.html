@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}Voucher {{ voucher.voucher_code }}{% endblock %}
+
+{% block content %}
+{% set is_active = voucher.status == 'ACTIVE' %}
+<div class="container py-4 py-lg-5 voucher-page" style="max-width: 720px;">
+
+    <div class="text-center mb-4">
+        <p class="status-pill status-pill--{{ 'active' if is_active else 'used' }}" role="status" aria-live="polite">
+            <i class="bi {{ 'bi-patch-check-fill' if is_active else 'bi-check2-all' }}"></i>
+            {{ 'Ready to use' if is_active else 'Already redeemed' }}
+        </p>
+        <span class="eyebrow eyebrow--muted d-block mb-2">Your digital gift ticket</span>
+        <h1 class="h2 mb-2">{{ voucher.sender_name }} sent you a gift</h1>
+        <p class="text-muted mb-0">Show this ticket to a cashier at <strong>{{ voucher.merchant_name }}</strong>.</p>
+    </div>
+
+    <div class="ticket ticket--full {{ '' if is_active else 'ticket--spent' }}">
+        <div class="ticket__top" style="--accent: {{ voucher.accent or '#12805C' }};">
+            <div class="ticket__store"><i class="bi {{ voucher.icon or 'bi-shop' }}"></i> {{ voucher.merchant_name }}</div>
+            <div class="ticket__value">{{ voucher.monetary_value|ugx }}</div>
+            <div class="ticket__item">{{ voucher.product_title }}</div>
+            <p class="ticket__desc">{{ voucher.product_desc }}</p>
+            <span class="ticket__validity"><i class="bi bi-shield-check me-1" aria-hidden="true"></i>Valid at this store only</span>
+        </div>
+        <div class="ticket__tear"></div>
+        <div class="ticket__bottom">
+            {% if voucher.message %}
+            <div class="gift-message">
+                <span class="gift-message__label"><i class="bi bi-chat-heart me-1" aria-hidden="true"></i>A message for you</span>
+                <p class="ticket__note ticket__note--lg mb-0">“{{ voucher.message }}”</p>
+                <div class="ticket__from mt-2">From <strong>{{ voucher.sender_name }}</strong></div>
+            </div>
+            {% endif %}
+            <div class="ticket-code-panel">
+                <div class="ticket__label">Your redemption code</div>
+                <div class="ticket__code ticket__code--lg" id="voucherCode">{{ voucher.voucher_code }}</div>
+                <p class="small text-muted mb-0">The cashier will verify this code online before redemption.</p>
+            </div>
+
+            <dl class="ticket__meta">
+                <div><dt>Sent to</dt><dd>{{ voucher.recipient_phone|phone }}</dd></div>
+                <div><dt>Created</dt><dd>{{ voucher.created_at|eat("%d %b %Y") }}</dd></div>
+                {% if voucher.redeemed_at %}
+                <div><dt>Redeemed</dt><dd>{{ voucher.redeemed_at|eat }}</dd></div>
+                {% endif %}
+            </dl>
+        </div>
+    </div>
+
+    <div class="d-grid gap-2 mt-4">
+        {% if is_active %}
+        <button type="button" class="btn btn-primary btn-lg" data-bs-toggle="modal" data-bs-target="#shareModal">
+            <i class="bi bi-send me-2"></i>Send or resend this voucher
+        </button>
+        {% endif %}
+        <div class="row g-2">
+            <div class="col-6">
+                <button type="button" class="btn btn-outline-dark w-100" data-copy="{{ voucher.voucher_code }}" data-copy-label="Copy code">
+                    <i class="bi bi-clipboard me-2"></i><span>Copy code</span>
+                </button>
+            </div>
+            <div class="col-6">
+                <a href="{{ url_for('merchant_verify', prefill=voucher.voucher_code) }}" class="btn btn-outline-dark w-100">
+                    <i class="bi bi-upc-scan me-2"></i>Open cashier portal
+                </a>
+            </div>
+        </div>
+        <p class="text-center small text-muted mt-1 mb-0">The cashier portal link is here for the demo. Real recipients would not see it.</p>
+    </div>
+
+    <noscript>
+        <section class="panel mt-4" aria-labelledby="shareFallbackTitle">
+            <h2 class="h5" id="shareFallbackTitle">Share this voucher</h2>
+            <p class="small text-muted">Choose a messaging app, or copy the voucher link from your browser's address bar.</p>
+            <div class="sms-bubble mb-3">{{ share.text }}</div>
+            <div class="d-grid gap-2">
+                <a class="btn btn-success" href="{{ share.whatsapp }}" target="_blank" rel="noopener">Continue in WhatsApp</a>
+                <a class="btn btn-outline-dark" href="{{ share.sms }}">Continue in SMS</a>
+            </div>
+        </section>
+    </noscript>
+</div>
+
+<!-- Share modal: simulated delivery + WhatsApp / SMS hand-off -->
+<div class="modal fade" id="shareModal" tabindex="-1" aria-labelledby="shareTitle" aria-hidden="true"
+     {% if show_share %}data-autoshow="true"{% endif %}>
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content share">
+            <div class="modal-header border-0 pb-0">
+                <h2 class="modal-title h5" id="shareTitle">
+                    {% if show_share %}Gift paid for. Now send it.{% else %}Send this voucher{% endif %}
+                </h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <ol class="progress-steps" id="deliverySteps" {% if not show_share %}data-instant="true"{% endif %}>
+                    <li><i class="bi bi-check-circle-fill"></i> Demo checkout recorded <span class="text-muted">(no real payment)</span></li>
+                    <li><i class="bi bi-check-circle-fill"></i> Voucher <strong>{{ voucher.voucher_code }}</strong> created</li>
+                    <li><i class="bi bi-check-circle-fill"></i> SMS queued for {{ voucher.recipient_phone|phone }} <span class="text-muted">(simulated)</span></li>
+                </ol>
+
+                <p class="small text-muted mt-3 mb-2">What {{ voucher.recipient_phone|phone }} receives</p>
+                <div class="sms-bubble" id="shareText">{{ share.text }}</div>
+
+                <div class="d-grid gap-2 mt-4">
+                    <a class="btn btn-whatsapp btn-lg" href="{{ share.whatsapp }}" target="_blank" rel="noopener">
+                        <i class="bi bi-whatsapp me-2"></i>Send on WhatsApp
+                    </a>
+                    <a class="btn btn-outline-dark btn-lg" href="{{ share.sms }}">
+                        <i class="bi bi-chat-text me-2"></i>Send as SMS
+                    </a>
+                    <button type="button" class="btn btn-light" data-copy="{{ share.link }}" data-copy-label="Copy voucher link">
+                        <i class="bi bi-link-45deg me-2"></i><span>Copy voucher link</span>
+                    </button>
+                </div>
+                <p class="small text-muted mt-3 mb-0">WhatsApp and SMS open on your device with the message filled in. You press send.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="toast-container position-fixed bottom-0 start-50 translate-middle-x p-3">
+    <div id="copyToast" class="toast align-items-center text-bg-dark border-0" role="status" aria-live="polite" aria-atomic="true">
+        <div class="d-flex">
+            <div class="toast-body"><i class="bi bi-clipboard-check me-2"></i><span id="copyToastText">Copied</span></div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+    </div>
+</div>
+{% endblock %}

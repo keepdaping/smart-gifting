@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local environments and secrets
+.venv/
+venv/
+.env
+.env.*
+
+# Local SQLite databases
+gifting.db
+*.sqlite
+*.sqlite3
+*.db-journal
+
+# Tunnelling binaries (download them locally, do not commit them)
+bore.exe
+bore.zip
+bore/
+ngrok*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

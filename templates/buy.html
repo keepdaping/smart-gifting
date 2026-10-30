@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% from "_macros.html" import media, field_error %}
+{% block title %}Send {{ product.title }}{% endblock %}
+
+{% block content %}
+<div class="container py-4 py-lg-5">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb sg-crumb sg-crumb--dark">
+            <li class="breadcrumb-item"><a href="{{ url_for('index') }}">Marketplace</a></li>
+            <li class="breadcrumb-item"><a href="{{ url_for('store_catalog', merchant_id=product.merchant_id) }}">{{ product.merchant_name }}</a></li>
+            <li class="breadcrumb-item active" aria-current="page">Send gift</li>
+        </ol>
+    </nav>
+
+    <ol class="checkout-steps mb-4" aria-label="Gift checkout progress">
+        <li class="checkout-step checkout-step--done"><span class="checkout-step__number"><i class="bi bi-check2" aria-hidden="true"></i></span><span>Choose gift</span></li>
+        <li class="checkout-step checkout-step--current" aria-current="step"><span class="checkout-step__number">2</span><span>Your details</span></li>
+        <li class="checkout-step"><span class="checkout-step__number">3</span><span>Share voucher</span></li>
+    </ol>
+
+    <div class="checkout-heading mb-4">
+        <div>
+            <span class="eyebrow eyebrow--muted">A thoughtful gift is almost ready</span>
+            <h1 class="h2 mb-1">Send this gift</h1>
+            <p class="text-muted mb-0">Add the details and choose your demo payment method.</p>
+        </div>
+        <div class="checkout-total"><span>Gift value</span><strong>{{ product.monetary_value|ugx }}</strong></div>
+    </div>
+
+    <div class="row g-4 g-xl-5">
+        <div class="col-lg-7">
+            <form method="POST" id="giftForm" novalidate class="panel">
+                {{ csrf_field() }}
+
+                <div class="form-section-heading">
+                    <span class="form-section-heading__icon"><i class="bi bi-person-heart" aria-hidden="true"></i></span>
+                    <div><h2 class="h5 mb-0">Who's sending the gift?</h2><p class="small text-muted mb-0">Your name will appear on the voucher.</p></div>
+                </div>
+                <div class="mb-4">
+                    <label for="sender_name" class="form-label">Your name <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control form-control-lg {{ 'is-invalid' if errors.sender_name }}" id="sender_name" name="sender_name"
+                           value="{{ form.sender_name or '' }}" placeholder="e.g. David Kato" autocomplete="name"
+                           required minlength="2" maxlength="60">
+                    <div class="form-text">Shown to your friend on the voucher.</div>
+                    <div class="invalid-feedback">{{ errors.sender_name or 'Enter your name (2 to 60 characters).' }}</div>
+                </div>
+
+                <div class="mb-4">
+                    <label for="recipient_phone" class="form-label">Recipient's mobile number <span class="text-danger">*</span></label>
+                    <div class="input-group input-group-lg has-validation">
+                        <span class="input-group-text">+256</span>
+                        <input type="tel" class="form-control {{ 'is-invalid' if errors.recipient_phone }}" id="recipient_phone" name="recipient_phone"
+                               value="{{ form.recipient_phone|replace('+256', '0') if form.recipient_phone else '' }}" placeholder="0770 123 456"
+                               inputmode="tel" autocomplete="off" required>
+                        <div class="invalid-feedback">{{ errors.recipient_phone or 'Enter a valid Ugandan mobile number, e.g. 0770 123 456.' }}</div>
+                    </div>
+                    <div class="form-text">We'll prepare a WhatsApp and SMS message for this number.</div>
+                </div>
+
+                <div class="mb-4">
+                    <div class="d-flex justify-content-between">
+                        <label for="message" class="form-label">Personal message <span class="text-muted fw-normal">(optional)</span></label>
+                        <span class="form-text mt-0" id="messageCount" data-max="{{ max_message }}">0 / {{ max_message }}</span>
+                    </div>
+                    <textarea class="form-control {{ 'is-invalid' if errors.message }}" id="message" name="message" rows="3"
+                              maxlength="{{ max_message }}" placeholder="Happy birthday! Treat yourself on me.">{{ form.message or '' }}</textarea>
+                    <div class="invalid-feedback">{{ errors.message }}</div>
+                </div>
+
+                <fieldset class="mb-4">
+                    <legend class="form-label">Choose a demo payment method</legend>
+                    <div class="row g-2">
+                        {% for key, label in payment_methods.items() %}
+                        <div class="col-6">
+                            <input type="radio" class="pay-input" name="payment_method" id="pay_{{ key }}" value="{{ key }}"
+                                   {{ 'checked' if form.payment_method == key }} required>
+                            <label for="pay_{{ key }}" class="pay-option pay-option--{{ key }}">
+                                <span class="pay-option__dot"></span>
+                                <span>{{ label }}</span>
+                            </label>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {{ field_error(errors, 'payment_method') }}
+                    <div class="payment-note mt-3"><i class="bi bi-info-circle" aria-hidden="true"></i><span><strong>Demo only.</strong> No real money is charged and no payment prompt is sent.</span></div>
+                </fieldset>
+
+                <button type="submit" class="btn btn-primary btn-lg w-100" id="payBtn" data-loading-text="Processing payment…">
+                    <span class="btn__label"><i class="bi bi-shield-lock-fill me-2" aria-hidden="true"></i>Continue · {{ product.monetary_value|ugx }}</span>
+                </button>
+                <p class="small text-center text-muted mt-3 mb-0"><i class="bi bi-lock me-1" aria-hidden="true"></i>Your details are used to prepare this demo voucher.</p>
+            </form>
+        </div>
+
+        <div class="col-lg-5">
+            <div class="sticky-lg-top" style="top: 5.5rem;">
+                <div class="preview-heading"><span class="eyebrow eyebrow--muted">The recipient experience</span><h2 class="h5 mb-0">Their gift, beautifully wrapped</h2></div>
+                <div class="ticket ticket--preview" id="preview">
+                    <div class="ticket__top" style="--accent: {{ product.accent or '#12805C' }};">
+                        <div class="ticket__value">{{ product.monetary_value|ugx }}</div>
+                        <div class="ticket__item">{{ product.title }}</div>
+                        <div class="ticket__store"><i class="bi {{ product.icon or 'bi-shop' }}"></i> {{ product.merchant_name }}</div>
+                    </div>
+                    <div class="ticket__tear"></div>
+                    <div class="ticket__bottom">
+                        <div class="ticket__from">From <strong id="previewFrom">{{ form.sender_name or 'you' }}</strong></div>
+                        <div class="ticket__note" id="previewNote">{{ ('“' ~ form.message ~ '”') if form.message else 'Your message will appear here.' }}</div>
+                        <div class="ticket__code ticket__code--muted">Code created after payment</div>
+                    </div>
+                </div>
+
+                <ul class="assure">
+                    <li><i class="bi bi-shield-check"></i> Works once, at {{ product.merchant_name }} only</li>
+                    <li><i class="bi bi-person-badge"></i> Cashier checks the code before handing over the gift</li>
+                    <li><i class="bi bi-chat-dots"></i> Share by WhatsApp or SMS right after paying</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
