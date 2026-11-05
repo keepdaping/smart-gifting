@@ -19,6 +19,14 @@
     display: none !important;
 }
 
+.kfc-tab-content > .kfc-tab-pane {
+    display: none;
+}
+
+.kfc-tab-content > .kfc-tab-pane.active {
+    display: block;
+}
+
 html {
     scroll-behavior: smooth;
 }

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import media %}
+{% from "_macros.html" import media, menu_media %}
 {% block title %}{{ merchant.name }}{% endblock %}
 
 {% block content %}
@@ -28,6 +28,69 @@
     </div>
 </section>
 
+{% if menu_categories %}
+<section class="container py-4 py-lg-5">
+    <div class="section-heading">
+        <div>
+            <span class="eyebrow eyebrow--muted">Pick something they'll love</span>
+            <h2 class="h2 mb-1">KFC Uganda menu</h2>
+        </div>
+        <span class="results-pill">{{ menu_item_count }} items available</span>
+    </div>
+
+    <ul class="nav nav-tabs mb-4" role="tablist" aria-label="KFC menu categories">
+        {% for category in menu_categories %}
+        <li class="nav-item" role="presentation">
+            <button class="nav-link kfc-menu-tab {{ 'active' if loop.first }}" id="kfc-tab-{{ category.slug }}"
+                    data-bs-toggle="tab" data-bs-target="#kfc-category-{{ category.slug }}"
+                    type="button" role="tab" aria-controls="kfc-category-{{ category.slug }}"
+                    aria-selected="{{ 'true' if loop.first else 'false' }}">
+                {{ category.name }}
+            </button>
+        </li>
+        {% endfor %}
+    </ul>
+    <div class="tab-content kfc-tab-content">
+        {% for category in menu_categories %}
+        <section class="tab-pane kfc-tab-pane fade {{ 'show active' if loop.first }}" id="kfc-category-{{ category.slug }}"
+                 role="tabpanel" aria-labelledby="kfc-tab-{{ category.slug }}" tabindex="0">
+    <div class="row g-3 g-lg-4">
+        {% for item in category["items"] %}
+        <div class="col-12 col-sm-6 col-lg-4">
+            <article class="product-card">
+                {{ menu_media(item.image, item.name) }}
+                <div class="product-card__body">
+                    <h3 class="product-card__title">{{ item.name }}</h3>
+                    <p class="product-card__desc menu-item-description">{{ item.description or '' }}</p>
+                    <label class="form-label small fw-semibold" for="menu-variant-{{ category.slug }}-{{ loop.index }}">Choose an option</label>
+                    <select class="form-select form-select-sm menu-variant mb-3"
+                            id="menu-variant-{{ category.slug }}-{{ loop.index }}">
+                        {% for variant in item.variants %}
+                        <option value="{{ variant.id }}" data-price="{{ variant.price_ugx }}"
+                                data-description="{{ variant.description or '' }}"
+                                data-buy-url="{{ url_for('buy_menu_item', menu_item_id=variant.id) }}">
+                            {{ variant.variant or 'Standard' }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <div class="product-card__foot">
+                        <span class="price"><span class="price__label">Price</span><span class="menu-price">{{ item.variants[0].price_ugx|ugx }}</span></span>
+                        <a href="{{ url_for('buy_menu_item', menu_item_id=item.variants[0].id) }}"
+                           class="btn btn-primary btn-sm px-3 menu-gift">
+                            <i class="bi bi-gift me-1" aria-hidden="true"></i> Gift this
+                        </a>
+                    </div>
+                </div>
+            </article>
+        </div>
+        {% endfor %}
+    </div>
+        </section>
+        {% endfor %}
+    </div>
+    <p class="small text-muted mt-4 mb-0">Demo data from KFC Uganda menu. Prices may vary by branch. Not affiliated with KFC.</p>
+</section>
+{% else %}
 <section class="container py-4 py-lg-5">
     <div class="section-heading">
         <div>
@@ -36,7 +99,6 @@
         </div>
         <span class="results-pill">{{ products|length }} available</span>
     </div>
-
     {% if products %}
     <div class="row g-3 g-lg-4">
         {% for p in products %}
@@ -66,4 +128,5 @@
     </div>
     {% endif %}
 </section>
+{% endif %}
 {% endblock %}

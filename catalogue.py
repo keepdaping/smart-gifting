@@ -3,18 +3,13 @@
 
 MERCHANTS = [
     {
-        "name": "KFC Uganda",
+        "name": "KFC",
         "category": "Food",
-        "description": "A tasty meal, ready to share with someone you love.",
+        "description": "KFC Uganda menu favourites, ready to gift and collect in store.",
         "icon": "bi-egg-fried",
         "accent": "#C8102E",
         "photo": None,
-        "products": [
-            ("Zinger Burger Feast", 35000, "A Zinger burger meal for a well-deserved treat.", None),
-            ("Family Bucket", 85000, "A sharing bucket for a meal together.", None),
-            ("Twister Combo", 28000, "A Twister wrap with sides and a drink.", None),
-            ("Chicken Snack Box", 22000, "A quick chicken snack with a side.", None),
-        ],
+        "products": [],
     },
     {
         "name": "Sweet Crumbs Bakery",

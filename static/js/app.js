@@ -163,6 +163,48 @@ document.addEventListener("DOMContentLoaded", () => {
     message?.addEventListener("input", updateGiftPreview);
     updateGiftPreview();
 
+    document.querySelectorAll(".menu-variant").forEach((select) => {
+        const card = select.closest(".product-card");
+        const price = card?.querySelector(".menu-price");
+        const description = card?.querySelector(".menu-item-description");
+        const giftButton = card?.querySelector(".menu-gift");
+        const updateMenuVariant = () => {
+            const option = select.selectedOptions[0];
+            if (!option) {
+                return;
+            }
+            if (price) {
+                price.textContent = `UGX ${Number(option.dataset.price).toLocaleString("en-US")}`;
+            }
+            if (description) {
+                description.textContent = option.dataset.description || "";
+            }
+            if (giftButton) {
+                giftButton.href = option.dataset.buyUrl || "#";
+            }
+        };
+        select.addEventListener("change", updateMenuVariant);
+        updateMenuVariant();
+    });
+
+    document.querySelectorAll(".kfc-menu-tab").forEach((tab) => {
+        tab.addEventListener("click", () => {
+            const target = document.querySelector(tab.dataset.bsTarget || "");
+            const tablist = tab.closest('[role="tablist"]');
+            const panels = target?.parentElement?.querySelectorAll(".kfc-tab-pane");
+            if (!target || !tablist || !panels) {
+                return;
+            }
+            tablist.querySelectorAll(".kfc-menu-tab").forEach((otherTab) => {
+                const selected = otherTab === tab;
+                otherTab.classList.toggle("active", selected);
+                otherTab.setAttribute("aria-selected", String(selected));
+            });
+            panels.forEach((panel) => panel.classList.remove("show", "active"));
+            target.classList.add("show", "active");
+        });
+    });
+
     const phoneInput = document.querySelector("#recipient_phone");
     const giftForm = document.querySelector("#giftForm");
     const isUgandanMobile = (value) => {

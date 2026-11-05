@@ -84,7 +84,9 @@
                     <div class="verdict__head"><i class="bi bi-check-circle-fill"></i> Valid. Ready to redeem.</div>
                     <dl class="verdict__list">
                         <div><dt>Gift</dt><dd>{{ result.voucher.product_title }}</dd></div>
-                        <div><dt>Value</dt><dd class="fw-semibold">{{ result.voucher.monetary_value|ugx }}</dd></div>
+                        {% if result.voucher.menu_item_variant %}<div><dt>Option</dt><dd>{{ result.voucher.menu_item_variant }}</dd></div>{% endif %}
+                        {% if result.voucher.product_desc %}<div><dt>Details</dt><dd>{{ result.voucher.product_desc }}</dd></div>{% endif %}
+                        <div><dt>Value</dt><dd class="fw-semibold">{{ (result.voucher.price_at_purchase or result.voucher.monetary_value)|ugx }}</dd></div>
                         <div><dt>From</dt><dd>{{ result.voucher.sender_name }}</dd></div>
                         <div><dt>Sent to</dt><dd>{{ result.voucher.recipient_phone|phone }}</dd></div>
                         <div><dt>Created</dt><dd>{{ result.voucher.created_at|eat }}</dd></div>
@@ -103,7 +105,9 @@
                     <div class="verdict__head"><i class="bi bi-exclamation-triangle-fill"></i> Already redeemed. Do not hand over the gift.</div>
                     <dl class="verdict__list">
                         <div><dt>Gift</dt><dd>{{ result.voucher.product_title }}</dd></div>
-                        <div><dt>Value</dt><dd>{{ result.voucher.monetary_value|ugx }}</dd></div>
+                        {% if result.voucher.menu_item_variant %}<div><dt>Option</dt><dd>{{ result.voucher.menu_item_variant }}</dd></div>{% endif %}
+                        {% if result.voucher.product_desc %}<div><dt>Details</dt><dd>{{ result.voucher.product_desc }}</dd></div>{% endif %}
+                        <div><dt>Value</dt><dd>{{ (result.voucher.price_at_purchase or result.voucher.monetary_value)|ugx }}</dd></div>
                         <div><dt>Redeemed</dt><dd>{{ result.voucher.redeemed_at|eat if result.voucher.redeemed_at else 'Earlier (time not recorded)' }}</dd></div>
                     </dl>
                 </div>
@@ -145,7 +149,9 @@
                             <td class="text-nowrap small">{{ row.created_at|eat("%d %b, %I:%M %p") }}</td>
                             <td><code>{{ row.voucher_code }}</code></td>
                             <td class="small">
-                                {% if row.product_title %}{{ row.product_title }}<span class="text-muted d-block">{{ row.monetary_value|ugx }}</span>
+                                {% if row.product_title %}{{ row.product_title }}
+                                    {% if row.menu_item_variant %}<span class="text-muted d-block">{{ row.menu_item_variant }}</span>{% endif %}
+                                    <span class="text-muted d-block">{{ row.monetary_value|ugx }}{% if row.cashier %} · {{ row.cashier }}{% endif %}</span>
                                 {% else %}<span class="text-muted">No matching voucher</span>{% endif %}
                             </td>
                             <td class="text-end"><span class="outcome outcome--{{ color }}"><i class="bi {{ icon }}"></i> {{ label }}</span></td>

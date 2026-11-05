@@ -26,16 +26,19 @@ Anti-fraud design (the core of the project)
 
 import hashlib
 import hmac
+import math
 import os
 import re
 import secrets
 import sqlite3
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import quote
 
-from flask import (Flask, abort, flash, g, redirect, render_template, request,
-                   session, url_for)
+import click
+from flask import (Flask, abort, flash, g, jsonify, redirect, render_template,
+                   request, session, url_for)
 from markupsafe import Markup, escape
 from werkzeug.middleware.proxy_fix import ProxyFix
 
@@ -70,6 +73,10 @@ CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no 0/O/1/I
 MAX_MESSAGE_LEN = 200
 MAX_FAILED_LOOKUPS = 8      # per client and store, per window
 LOOKUP_WINDOW_MINUTES = 5
+KFC_CATEGORIES = (
+    "Wings", "Streetwise", "Burgers & Wraps", "Boxes & Strips",
+    "Bucket Meals", "Buckets", "Sides", "Desserts", "Drinks",
+)
 
 PAYMENT_METHODS = {
     "mtn": "MTN Mobile Money",
@@ -141,11 +148,27 @@ def init_db(path=None):
             image_url TEXT,
             FOREIGN KEY (merchant_id) REFERENCES merchants (id)
         );
+        CREATE TABLE IF NOT EXISTS menu_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            merchant_id INTEGER NOT NULL,
+            category TEXT NOT NULL,
+            name TEXT NOT NULL,
+            variant TEXT,
+            description TEXT,
+            price_ugx INTEGER NOT NULL CHECK (price_ugx >= 0),
+            tags TEXT,
+            image_filename TEXT,
+            is_active BOOLEAN NOT NULL DEFAULT 1,
+            price_updated_at DATE NOT NULL DEFAULT CURRENT_DATE,
+            FOREIGN KEY (merchant_id) REFERENCES merchants (id)
+        );
         CREATE TABLE IF NOT EXISTS vouchers (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             voucher_code TEXT UNIQUE NOT NULL,
             merchant_id INTEGER NOT NULL,
-            product_id INTEGER NOT NULL,
+            product_id INTEGER,
+            menu_item_id INTEGER,
+            price_at_purchase INTEGER,
             sender_name TEXT NOT NULL,
             recipient_phone TEXT NOT NULL,
             message TEXT,
@@ -153,7 +176,8 @@ def init_db(path=None):
             status TEXT NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'USED')),
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (merchant_id) REFERENCES merchants (id),
-            FOREIGN KEY (product_id) REFERENCES products (id)
+            FOREIGN KEY (product_id) REFERENCES products (id),
+            FOREIGN KEY (menu_item_id) REFERENCES menu_items (id)
         );
         CREATE TABLE IF NOT EXISTS audit_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -162,16 +186,77 @@ def init_db(path=None):
             outcome TEXT NOT NULL,
             created_at TIMESTAMP NOT NULL,
             client_key TEXT,
-            FOREIGN KEY (merchant_id) REFERENCES merchants (id)
+            menu_item_id INTEGER,
+            cashier TEXT,
+            FOREIGN KEY (merchant_id) REFERENCES merchants (id),
+            FOREIGN KEY (menu_item_id) REFERENCES menu_items (id)
         );
     """)
+    cur.execute("BEGIN IMMEDIATE")
     # Columns added after the first prototype (older gifting.db files get upgraded).
     _add_missing_columns(cur, "merchants", {"image_url": "TEXT", "icon": "TEXT", "accent": "TEXT"})
     _add_missing_columns(cur, "products", {"image_url": "TEXT"})
-    _add_missing_columns(cur, "vouchers", {"payment_method": "TEXT", "redeemed_at": "TIMESTAMP"})
-    _add_missing_columns(cur, "audit_log", {"client_key": "TEXT"})
+    _add_missing_columns(cur, "vouchers", {
+        "payment_method": "TEXT",
+        "redeemed_at": "TIMESTAMP",
+        "menu_item_id": "INTEGER REFERENCES menu_items(id)",
+        "price_at_purchase": "INTEGER",
+    })
+    _add_missing_columns(cur, "audit_log", {
+        "client_key": "TEXT",
+        "menu_item_id": "INTEGER REFERENCES menu_items(id)",
+        "cashier": "TEXT",
+    })
+
+    voucher_columns = {
+        row["name"]: row for row in cur.execute("PRAGMA table_info(vouchers)")
+    }
+    if voucher_columns["product_id"]["notnull"]:
+        cur.execute("ALTER TABLE vouchers RENAME TO vouchers_legacy")
+        cur.execute("""
+            CREATE TABLE vouchers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                voucher_code TEXT UNIQUE NOT NULL,
+                merchant_id INTEGER NOT NULL,
+                product_id INTEGER,
+                menu_item_id INTEGER,
+                price_at_purchase INTEGER,
+                sender_name TEXT NOT NULL,
+                recipient_phone TEXT NOT NULL,
+                message TEXT,
+                monetary_value INTEGER NOT NULL,
+                status TEXT NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'USED')),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                payment_method TEXT,
+                redeemed_at TIMESTAMP,
+                FOREIGN KEY (merchant_id) REFERENCES merchants (id),
+                FOREIGN KEY (product_id) REFERENCES products (id),
+                FOREIGN KEY (menu_item_id) REFERENCES menu_items (id)
+            )
+        """)
+        cur.execute("""
+            INSERT INTO vouchers (
+                id, voucher_code, merchant_id, product_id, menu_item_id,
+                price_at_purchase, sender_name, recipient_phone, message,
+                monetary_value, status, created_at, payment_method, redeemed_at
+            )
+            SELECT id, voucher_code, merchant_id, product_id, menu_item_id,
+                   price_at_purchase, sender_name, recipient_phone, message,
+                   monetary_value, status, created_at, payment_method, redeemed_at
+            FROM vouchers_legacy
+        """)
+        cur.execute("DROP TABLE vouchers_legacy")
+    cur.execute(
+        "UPDATE vouchers SET price_at_purchase = monetary_value "
+        "WHERE price_at_purchase IS NULL"
+    )
 
     cur.execute("CREATE INDEX IF NOT EXISTS idx_vouchers_merchant ON vouchers (merchant_id, status)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_menu_items_merchant ON menu_items (merchant_id, is_active)")
+    cur.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_menu_item_variant "
+        "ON menu_items (merchant_id, name, COALESCE(variant, ''))"
+    )
     cur.execute("CREATE INDEX IF NOT EXISTS idx_audit_merchant ON audit_log (merchant_id, id)")
     cur.execute(
         "CREATE INDEX IF NOT EXISTS idx_audit_failures ON audit_log "
@@ -196,6 +281,12 @@ def seed_db(path=None):
     try:
         for m in MERCHANTS:
             row = cur.execute("SELECT id FROM merchants WHERE name = ?", (m["name"],)).fetchone()
+            if not row and m["name"] == "KFC":
+                row = cur.execute(
+                    "SELECT id FROM merchants WHERE name = ?", ("KFC Uganda",)
+                ).fetchone()
+                if row:
+                    cur.execute("UPDATE merchants SET name = 'KFC' WHERE id = ?", (row["id"],))
             values = (m["category"], image_url(m["photo"]), m["description"], m["icon"], m["accent"])
             if row:
                 merchant_id = row["id"]
@@ -235,6 +326,43 @@ def bootstrap(path=None):
     """Prepare the database. Runs at import so it also works under gunicorn."""
     init_db(path)
     seed_db(path)
+    from seed_kfc import seed_kfc
+    seed_kfc(path)
+
+
+@app.cli.command("seed-kfc")
+def seed_kfc_command():
+    """Create/update the KFC merchant menu."""
+    from seed_kfc import seed_kfc
+
+    count = seed_kfc(app.config["DATABASE"])
+    print(f"Seeded {count} KFC menu variants.")
+
+
+@app.cli.command("check-kfc-images")
+def check_kfc_images_command():
+    """Report active menu items without a local image file."""
+    db = get_db()
+    rows = db.execute("""
+        SELECT mi.id, mi.category, mi.name, mi.variant, mi.image_filename,
+               m.name AS merchant_name
+        FROM menu_items mi JOIN merchants m ON m.id=mi.merchant_id
+        WHERE mi.is_active=1 ORDER BY m.name, mi.category, mi.name, mi.id
+    """).fetchall()
+    missing = []
+    for row in rows:
+        image_path = menu_image_path(row["image_filename"])
+        if not image_path or not image_path.is_file():
+            missing.append(row)
+    if missing:
+        for row in missing:
+            click.echo(
+                f"Missing image: {row['merchant_name']} / {row['category']} / "
+                f"{row['name']} ({row['variant'] or 'standard'}): "
+                f"{row['image_filename'] or '<empty>'}"
+            )
+        raise click.ClickException(f"{len(missing)} active menu item image(s) are missing.")
+    click.echo(f"All {len(rows)} active menu item image(s) exist.")
 
 
 # --------------------------------------------------------------------------
@@ -280,6 +408,25 @@ def normalise_phone(raw):
 @app.template_filter("ugx")
 def ugx_filter(value):
     return f"UGX {int(value):,}"
+
+
+def menu_image_path(filename):
+    """Resolve an image below static/img without accepting path traversal."""
+    if not filename:
+        return None
+    image_root = (BASE_DIR / "static" / "img").resolve()
+    image_path = (image_root / filename).resolve()
+    if image_root not in image_path.parents:
+        return None
+    return image_path
+
+
+def menu_item_image(filename):
+    """Return a static URL only when the configured menu image exists."""
+    image_path = menu_image_path(filename)
+    if not image_path or not image_path.is_file():
+        return None
+    return url_for("static", filename=f"img/{filename}")
 
 
 @app.template_filter("phone")
@@ -373,9 +520,25 @@ def index():
     """Store grid with data attributes the client-side search and filter read."""
     db = get_db()
     merchants = db.execute("""
-        SELECT m.*, COUNT(p.id) AS product_count, MIN(p.monetary_value) AS min_price,
-               MAX(p.monetary_value) AS max_price, GROUP_CONCAT(p.title, '|') AS product_titles
-        FROM merchants m LEFT JOIN products p ON p.merchant_id = m.id
+        SELECT m.*,
+               CASE WHEN m.name = 'KFC' THEN
+                   (SELECT COUNT(DISTINCT mi.name) FROM menu_items mi
+                    WHERE mi.merchant_id=m.id AND mi.is_active=1)
+               ELSE COUNT(p.id) END AS product_count,
+               CASE WHEN m.name = 'KFC' THEN
+                   (SELECT MIN(mi.price_ugx) FROM menu_items mi
+                    WHERE mi.merchant_id=m.id AND mi.is_active=1)
+               ELSE MIN(p.monetary_value) END AS min_price,
+               CASE WHEN m.name = 'KFC' THEN
+                   (SELECT MAX(mi.price_ugx) FROM menu_items mi
+                    WHERE mi.merchant_id=m.id AND mi.is_active=1)
+               ELSE MAX(p.monetary_value) END AS max_price,
+               CASE WHEN m.name = 'KFC' THEN
+                   (SELECT REPLACE(GROUP_CONCAT(DISTINCT mi.name), ',', '|')
+                    FROM menu_items mi WHERE mi.merchant_id=m.id AND mi.is_active=1)
+               ELSE GROUP_CONCAT(p.title, '|') END AS product_titles
+        FROM merchants m
+        LEFT JOIN products p ON p.merchant_id = m.id AND m.name != 'KFC'
         GROUP BY m.id ORDER BY m.id
     """).fetchall()
     categories = {}
@@ -390,10 +553,160 @@ def store_catalog(merchant_id):
     merchant = db.execute("SELECT * FROM merchants WHERE id = ?", (merchant_id,)).fetchone()
     if not merchant:
         abort(404)
+    if merchant["name"] == "KFC":
+        rows = db.execute(
+            "SELECT * FROM menu_items WHERE merchant_id=? AND is_active=1 "
+            "ORDER BY CASE category " +
+            " ".join(f"WHEN '{category}' THEN {position}" for position, category in enumerate(KFC_CATEGORIES)) +
+            " ELSE 99 END, name, id",
+            (merchant_id,),
+        ).fetchall()
+        grouped = {}
+        for row in rows:
+            key = (row["category"], row["name"])
+            if key not in grouped:
+                grouped[key] = {
+                    "category": row["category"],
+                    "name": row["name"],
+                    "description": row["description"],
+                    "image": menu_item_image(row["image_filename"]),
+                    "variants": [],
+                }
+            variant = dict(row)
+            variant["image"] = menu_item_image(row["image_filename"])
+            grouped[key]["variants"].append(variant)
+        categories = []
+        for category in KFC_CATEGORIES:
+            items = [item for item in grouped.values() if item["category"] == category]
+            if items:
+                slug = re.sub(r"[^a-z0-9]+", "-", category.lower()).strip("-")
+                categories.append({"name": category, "slug": slug, "items": items})
+        return render_template("store.html", merchant=merchant, products=[],
+                               menu_categories=categories,
+                               menu_item_count=sum(len(category["items"]) for category in categories))
     products = db.execute(
         "SELECT * FROM products WHERE merchant_id = ? ORDER BY monetary_value", (merchant_id,)
     ).fetchall()
-    return render_template("store.html", merchant=merchant, products=products)
+    return render_template("store.html", merchant=merchant, products=products,
+                           menu_categories=[], menu_item_count=0)
+
+
+def parse_budget(query, supplied_budget=None):
+    """Return an explicit or query-detected UGX ceiling, or None."""
+    if supplied_budget not in (None, ""):
+        raw = str(supplied_budget).strip().replace(",", "")
+        try:
+            value = int(raw)
+        except ValueError as exc:
+            raise ValueError("Budget must be a whole number of UGX.") from exc
+        if value < 0:
+            raise ValueError("Budget cannot be negative.")
+        return value
+
+    amount = r"(\d[\d,]*(?:\.\d+)?\s*[km]?)"
+    match = re.search(
+        rf"\b(?:under|below|less than|budget(?: of)?|up to|max(?:imum)?|<=)\s*"
+        rf"(?:ugx\s*)?{amount}",
+        query,
+        re.IGNORECASE,
+    )
+    if not match:
+        match = re.search(rf"\bugx\s*{amount}", query, re.IGNORECASE)
+    if not match:
+        match = re.search(r"\b\d[\d,]*(?:\.\d+)?\s*[km]\b", query, re.IGNORECASE)
+    if not match:
+        return None
+
+    raw = match.group(1) if match.lastindex else match.group(0)
+    raw = raw.strip().lower().replace(",", "")
+    multiplier = 1
+    if raw.endswith("k"):
+        multiplier, raw = 1_000, raw[:-1].strip()
+    elif raw.endswith("m"):
+        multiplier, raw = 1_000_000, raw[:-1].strip()
+    return int(float(raw) * multiplier)
+
+
+def _tokens(text):
+    return re.findall(r"[a-z0-9]+", (text or "").lower())
+
+
+def recommend_menu_items(db, query, budget=None, limit=10):
+    """Rank active menu variants by TF-IDF cosine similarity and apply a price ceiling."""
+    rows = db.execute("""
+        SELECT mi.*, m.id AS merchant_id, m.name AS merchant_name
+        FROM menu_items mi JOIN merchants m ON m.id=mi.merchant_id
+        WHERE mi.is_active=1
+    """).fetchall()
+    query_terms = _tokens(query)
+    if not query_terms or not rows:
+        return []
+
+    documents = [
+        _tokens(" ".join((row["name"], row["variant"] or "", row["description"] or "",
+                          row["tags"] or "", row["category"])))
+        for row in rows
+    ]
+    document_frequencies = defaultdict(int)
+    for terms in documents:
+        for term in set(terms):
+            document_frequencies[term] += 1
+    document_count = len(documents)
+    inverse_frequency = {
+        term: math.log((document_count + 1) / (frequency + 1)) + 1
+        for term, frequency in document_frequencies.items()
+    }
+
+    def vector(terms):
+        counts = defaultdict(int)
+        for term in terms:
+            counts[term] += 1
+        length = len(terms) or 1
+        return {
+            term: (count / length) * inverse_frequency.get(term, 0)
+            for term, count in counts.items()
+        }
+
+    query_vector = vector(query_terms)
+    query_norm = math.sqrt(sum(weight * weight for weight in query_vector.values()))
+    ranked = []
+    for row, terms in zip(rows, documents):
+        item_vector = vector(terms)
+        item_norm = math.sqrt(sum(weight * weight for weight in item_vector.values()))
+        dot = sum(weight * item_vector.get(term, 0) for term, weight in query_vector.items())
+        similarity = dot / (query_norm * item_norm) if query_norm and item_norm else 0
+        if similarity > 0:
+            ranked.append((similarity, row))
+    ranked.sort(key=lambda result: (-result[0], result[1]["id"]))
+    if budget is not None:
+        ranked = [result for result in ranked if result[1]["price_ugx"] <= budget]
+
+    return [{
+        "item": {
+            "id": row["id"],
+            "name": row["name"],
+            "variant": row["variant"],
+            "description": row["description"],
+            "category": row["category"],
+        },
+        "merchant": {"id": row["merchant_id"], "name": row["merchant_name"]},
+        "price": row["price_ugx"],
+        "image": menu_item_image(row["image_filename"]),
+        "similarity": score,
+    } for score, row in ranked[:limit]]
+
+
+@app.route("/recommend")
+def recommend():
+    query = request.args.get("q", "").strip()
+    try:
+        budget = parse_budget(query, request.args.get("budget"))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify({
+        "recommendations": recommend_menu_items(get_db(), query, budget),
+        "budget": budget,
+    })
 
 
 def _validate_gift_form(form):
@@ -424,11 +737,30 @@ def _validate_gift_form(form):
 
 @app.route("/buy/<int:product_id>", methods=["GET", "POST"])
 def buy_gift(product_id):
+    return _buy(product_id=product_id)
+
+
+@app.route("/buy/menu/<int:menu_item_id>", methods=["GET", "POST"])
+def buy_menu_item(menu_item_id):
+    return _buy(menu_item_id=menu_item_id)
+
+
+def _buy(product_id=None, menu_item_id=None):
     db = get_db()
-    product = db.execute("""
-        SELECT p.*, m.name AS merchant_name, m.icon AS icon, m.accent AS accent
-        FROM products p JOIN merchants m ON p.merchant_id = m.id WHERE p.id = ?
-    """, (product_id,)).fetchone()
+    if menu_item_id is not None:
+        product = db.execute("""
+            SELECT mi.id, mi.merchant_id, mi.name AS title, mi.variant, mi.description,
+                   mi.price_ugx AS monetary_value, m.name AS merchant_name,
+                   m.icon, m.accent, mi.id AS menu_item_id
+            FROM menu_items mi JOIN merchants m ON m.id=mi.merchant_id
+            WHERE mi.id=? AND mi.is_active=1
+        """, (menu_item_id,)).fetchone()
+    else:
+        product = db.execute("""
+            SELECT p.*, m.name AS merchant_name, m.icon AS icon, m.accent AS accent,
+                   NULL AS variant, NULL AS menu_item_id
+            FROM products p JOIN merchants m ON p.merchant_id = m.id WHERE p.id = ?
+        """, (product_id,)).fetchone()
     if not product:
         abort(404)
 
@@ -436,17 +768,56 @@ def buy_gift(product_id):
     if request.method == "POST":
         form, errors = _validate_gift_form(request.form)
         if not errors:
-            for _ in range(5):  # retry on the (very unlikely) code collision
+            if menu_item_id is not None:
+                db.execute("BEGIN IMMEDIATE")
+                product = db.execute("""
+                    SELECT mi.id, mi.merchant_id, mi.name AS title, mi.variant, mi.description,
+                           mi.price_ugx AS monetary_value, m.name AS merchant_name,
+                           m.icon, m.accent, mi.id AS menu_item_id
+                    FROM menu_items mi JOIN merchants m ON m.id=mi.merchant_id
+                    WHERE mi.id=? AND mi.is_active=1
+                """, (menu_item_id,)).fetchone()
+                if not product:
+                    db.rollback()
+                    abort(404)
+            for attempt in range(5):  # retry on the (very unlikely) code collision
+                if menu_item_id is not None and attempt:
+                    db.execute("BEGIN IMMEDIATE")
+                    product = db.execute("""
+                        SELECT mi.id, mi.merchant_id, mi.name AS title, mi.variant, mi.description,
+                               mi.price_ugx AS monetary_value, m.name AS merchant_name,
+                               m.icon, m.accent, mi.id AS menu_item_id
+                        FROM menu_items mi JOIN merchants m ON m.id=mi.merchant_id
+                        WHERE mi.id=? AND mi.is_active=1
+                    """, (menu_item_id,)).fetchone()
+                    if not product:
+                        db.rollback()
+                        abort(404)
                 code = generate_voucher_code()
                 try:
-                    db.execute(
-                        """INSERT INTO vouchers (voucher_code, merchant_id, product_id, sender_name,
-                               recipient_phone, message, monetary_value, payment_method, created_at)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                        (code, product["merchant_id"], product["id"], form["sender_name"],
-                         form["recipient_phone"], form["message"], product["monetary_value"],
-                         form["payment_method"], utc_now()),
-                    )
+                    if menu_item_id is not None:
+                        db.execute(
+                            """INSERT INTO vouchers (
+                                   voucher_code, merchant_id, product_id, menu_item_id,
+                                   price_at_purchase, sender_name, recipient_phone, message,
+                                   monetary_value, payment_method, created_at
+                               ) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                            (code, product["merchant_id"], product["menu_item_id"],
+                             product["monetary_value"], form["sender_name"],
+                             form["recipient_phone"], form["message"],
+                             product["monetary_value"], form["payment_method"], utc_now()),
+                        )
+                    else:
+                        db.execute(
+                            """INSERT INTO vouchers (voucher_code, merchant_id, product_id,
+                                   price_at_purchase, sender_name, recipient_phone, message,
+                                   monetary_value, payment_method, created_at)
+                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                            (code, product["merchant_id"], product["id"],
+                             product["monetary_value"], form["sender_name"],
+                             form["recipient_phone"], form["message"],
+                             product["monetary_value"], form["payment_method"], utc_now()),
+                        )
                     db.commit()
                     break
                 except sqlite3.IntegrityError:
@@ -466,10 +837,13 @@ def buy_gift(product_id):
 def fetch_voucher(db, code):
     return db.execute("""
         SELECT v.*, m.name AS merchant_name, m.icon AS icon, m.accent AS accent,
-               p.title AS product_title, p.description AS product_desc
+               COALESCE(mi.name, p.title) AS product_title,
+               COALESCE(mi.description, p.description) AS product_desc,
+               mi.variant AS menu_item_variant, mi.id AS menu_item_id
         FROM vouchers v
         JOIN merchants m ON v.merchant_id = m.id
-        JOIN products p ON v.product_id = p.id
+        LEFT JOIN products p ON v.product_id = p.id
+        LEFT JOIN menu_items mi ON v.menu_item_id = mi.id
         WHERE v.voucher_code = ?
     """, (code,)).fetchone()
 
@@ -516,11 +890,11 @@ def client_rate_limit_key():
     return hmac.new(secret, address.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
-def log_event(db, code, merchant_id, outcome, client_key=None):
+def log_event(db, code, merchant_id, outcome, client_key=None, menu_item_id=None, cashier=None):
     db.execute(
-        "INSERT INTO audit_log (voucher_code, merchant_id, outcome, created_at, client_key) "
-        "VALUES (?, ?, ?, ?, ?)",
-        (code[:24], merchant_id, outcome, utc_now(), client_key),
+        "INSERT INTO audit_log (voucher_code, merchant_id, outcome, created_at, client_key, "
+        "menu_item_id, cashier) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (code[:24], merchant_id, outcome, utc_now(), client_key, menu_item_id, cashier),
     )
     db.commit()
 
@@ -593,10 +967,13 @@ def cashier_stats(db, merchant_id):
 
 def audit_trail(db, merchant_id, limit=15):
     return db.execute("""
-        SELECT a.*, v.monetary_value, v.sender_name, p.title AS product_title
+        SELECT a.*, COALESCE(v.price_at_purchase, v.monetary_value) AS monetary_value,
+               v.sender_name, COALESCE(mi.name, p.title) AS product_title,
+               mi.variant AS menu_item_variant
         FROM audit_log a
         LEFT JOIN vouchers v ON v.voucher_code = a.voucher_code AND v.merchant_id = a.merchant_id
         LEFT JOIN products p ON p.id = v.product_id
+        LEFT JOIN menu_items mi ON mi.id = COALESCE(a.menu_item_id, v.menu_item_id)
         WHERE a.merchant_id = ? ORDER BY a.id DESC LIMIT ?
     """, (merchant_id, limit)).fetchall()
 
@@ -683,7 +1060,11 @@ def merchant_redeem():
             (utc_now(), code, cashier["merchant_id"]))
         db.commit()
         if cur.rowcount == 1:
-            log_event(db, code, cashier["merchant_id"], "REDEEMED")
+            voucher = result["voucher"]
+            log_event(
+                db, code, cashier["merchant_id"], "REDEEMED",
+                menu_item_id=voucher["menu_item_id"], cashier=cashier["name"],
+            )
             flash(f"{code} redeemed. Hand over the gift.", "success")
         else:
             log_event(db, code, cashier["merchant_id"], "ALREADY_USED")

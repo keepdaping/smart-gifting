@@ -18,8 +18,9 @@
     <div class="ticket ticket--full {{ '' if is_active else 'ticket--spent' }}">
         <div class="ticket__top" style="--accent: {{ voucher.accent or '#12805C' }};">
             <div class="ticket__store"><i class="bi {{ voucher.icon or 'bi-shop' }}"></i> {{ voucher.merchant_name }}</div>
-            <div class="ticket__value">{{ voucher.monetary_value|ugx }}</div>
+            <div class="ticket__value">{{ (voucher.price_at_purchase or voucher.monetary_value)|ugx }}</div>
             <div class="ticket__item">{{ voucher.product_title }}</div>
+            {% if voucher.menu_item_variant %}<div class="ticket__desc">{{ voucher.menu_item_variant }}</div>{% endif %}
             <p class="ticket__desc">{{ voucher.product_desc }}</p>
             <span class="ticket__validity"><i class="bi bi-shield-check me-1" aria-hidden="true"></i>Valid at this store only</span>
         </div>

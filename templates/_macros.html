@@ -10,6 +10,18 @@
 </div>
 {%- endmacro %}
 
+{% macro menu_media(image, alt) -%}
+<div class="media-tile" role="img" aria-label="{{ alt }}"
+     style="position:relative;display:grid;place-items:center;overflow:hidden;aspect-ratio:16/10;background:#f1f3f2;color:#adb5bd;">
+    <i class="bi bi-image" aria-hidden="true" style="font-size:2.5rem;"></i>
+    {% if image %}
+    <img src="{{ image }}" alt="" loading="eager"
+         style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;"
+         onerror="this.remove()">
+    {% endif %}
+</div>
+{%- endmacro %}
+
 {% macro field_error(errors, field) -%}
 {% if errors.get(field) %}
 <div class="invalid-feedback d-block">{{ errors[field] }}</div>
