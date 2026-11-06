@@ -1,8 +1,9 @@
-scikit-learn>=1.3
-pandas>=2.0
-numpy>=1.24
-matplotlib>=3.7
-joblib>=1.3
-pytest>=7
-# optional, for the embedding model (downloads ~90 MB once):
+# Everything the app needs (incl. pinned scikit-learn, numpy, pandas, joblib):
+-r requirements.txt
+
+# Offline reports and tests only:
+matplotlib==3.10.8
+pytest==9.2.0
+
+# Optional, for the embedding recommender (downloads ~90 MB once):
 # sentence-transformers>=2.7

@@ -1291,7 +1291,27 @@ def merchant_redeem():
 
 
 # --------------------------------------------------------------------------
+def ml_status():
+    """One line saying which ML pieces are really active (printed at startup)."""
+    from importlib.util import find_spec
+    mode = RECOMMENDER_MODE
+    if find_spec("sklearn") is None:
+        recommender = "builtin TF-IDF (scikit-learn not installed)"
+    elif mode in ("embed", "hybrid") and find_spec("sentence_transformers") is None:
+        recommender = f"{mode} (sentence-transformers not installed, LSA used as the semantic model)"
+    else:
+        recommender = mode
+    if not FRAUD_CHECK:
+        fraud = "off (FRAUD_CHECK=0)"
+    elif fraud_scorer() is not None:
+        fraud = "Isolation Forest model loaded"
+    else:
+        fraud = "model NOT loaded, using fixed rules"
+    return f"[ml] recommender mode: {recommender}; fraud check: {fraud}"
+
+
 bootstrap()
+print(ml_status(), flush=True)
 
 if __name__ == "__main__":
     app.run(debug=os.environ.get("FLASK_DEBUG") == "1", port=int(os.environ.get("PORT", 5000)))
