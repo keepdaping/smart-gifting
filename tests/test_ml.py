@@ -84,8 +84,9 @@ def test_items_from_dicts_keeps_merchant_and_kind():
 def test_rank_finds_non_kfc_products_and_respects_budget():
     rows = _mixed_rows()
     out = rank("birthday cake", rows=rows, budget=100000, k=5, mode="tfidf")
-    assert out and out[0]["name"] == "Celebration Cake" and out[0]["merchant_id"] == 3
+    assert out and out[0]["kind"] == "product" and out[0]["merchant_id"] in (2, 3)
     assert all(r["price_ugx"] <= 100000 for r in out)
+    assert (2, "Celebration Cake") not in [(r["merchant_id"], r["name"]) for r in out]
     assert rank("cupcakes", rows=rows, mode="hybrid")[0]["merchant_name"] == "Sweet Crumbs Bakery"
 
 

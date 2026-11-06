@@ -667,20 +667,48 @@ def _tokens(text):
     return re.findall(r"[a-z0-9]+", (text or "").lower())
 
 
-def recommend_menu_items(db, query, budget=None, limit=10):
-    """Rank active menu variants by TF-IDF cosine similarity and apply a price ceiling."""
-    rows = db.execute("""
-        SELECT mi.*, m.id AS merchant_id, m.name AS merchant_name
+RETIRED_PRODUCTS = {(m["name"], title) for m in MERCHANTS for title in m.get("retired_products", ())}
+RECOMMENDER_MODE = os.environ.get("ML_RECOMMENDER", "hybrid")  # tfidf|lsa|embed|hybrid|builtin
+
+
+def gift_catalogue(db):
+    """Everything a customer can currently buy, from every merchant.
+
+    A merchant sells either menu items (e.g. KFC) or fixed gift products (e.g. Sweet
+    Crumbs Bakery). Products of a merchant that has an active menu, and products a
+    seed has retired but kept only for old vouchers, are not offered.
+    """
+    rows = [dict(row, kind="menu_item") for row in db.execute("""
+        SELECT mi.id, mi.merchant_id, m.name AS merchant_name, m.category AS merchant_category,
+               mi.category, mi.name, mi.variant, mi.description, mi.price_ugx, mi.tags,
+               mi.image_filename
         FROM menu_items mi JOIN merchants m ON m.id=mi.merchant_id
-        WHERE mi.is_active=1
-    """).fetchall()
+        WHERE mi.is_active=1 ORDER BY mi.id
+    """)]
+    for row in db.execute("""
+        SELECT p.id, p.merchant_id, m.name AS merchant_name, m.category AS merchant_category,
+               m.category AS category, p.title AS name, NULL AS variant, p.description,
+               p.monetary_value AS price_ugx, '' AS tags, p.image_url
+        FROM products p JOIN merchants m ON m.id=p.merchant_id
+        WHERE NOT EXISTS (SELECT 1 FROM menu_items mi
+                          WHERE mi.merchant_id=p.merchant_id AND mi.is_active=1)
+        ORDER BY p.id
+    """):
+        if (row["merchant_name"], row["name"]) not in RETIRED_PRODUCTS:
+            rows.append(dict(row, kind="product"))
+    return rows
+
+
+def _builtin_rank(rows, query, budget=None, limit=10):
+    """Dependency-free TF-IDF ranking, used when scikit-learn is not installed."""
     query_terms = _tokens(query)
     if not query_terms or not rows:
         return []
 
     documents = [
         _tokens(" ".join((row["name"], row["variant"] or "", row["description"] or "",
-                          row["tags"] or "", row["category"])))
+                          row["tags"] or "", row["category"], row["merchant_name"],
+                          row["merchant_category"])))
         for row in rows
     ]
     document_frequencies = defaultdict(int)
@@ -706,30 +734,69 @@ def recommend_menu_items(db, query, budget=None, limit=10):
     query_vector = vector(query_terms)
     query_norm = math.sqrt(sum(weight * weight for weight in query_vector.values()))
     ranked = []
-    for row, terms in zip(rows, documents):
+    for index, (row, terms) in enumerate(zip(rows, documents)):
         item_vector = vector(terms)
         item_norm = math.sqrt(sum(weight * weight for weight in item_vector.values()))
         dot = sum(weight * item_vector.get(term, 0) for term, weight in query_vector.items())
         similarity = dot / (query_norm * item_norm) if query_norm and item_norm else 0
         if similarity > 0:
-            ranked.append((similarity, row))
-    ranked.sort(key=lambda result: (-result[0], result[1]["id"]))
+            ranked.append((similarity, index, row))
+    ranked.sort(key=lambda result: (-result[0], result[1]))
     if budget is not None:
-        ranked = [result for result in ranked if result[1]["price_ugx"] <= budget]
+        ranked = [result for result in ranked if result[2]["price_ugx"] <= budget]
+    return [(row, score) for score, _index, row in ranked[:limit]]
 
-    return [{
-        "item": {
-            "id": row["id"],
-            "name": row["name"],
-            "variant": row["variant"],
-            "description": row["description"],
-            "category": row["category"],
-        },
-        "merchant": {"id": row["merchant_id"], "name": row["merchant_name"]},
-        "price": row["price_ugx"],
-        "image": menu_item_image(row["image_filename"]),
-        "similarity": score,
-    } for score, row in ranked[:limit]]
+
+def _ml_rank(rows, query, budget=None, limit=10, mode="hybrid"):
+    """Rank with the ml package (scikit-learn); None when it is not installed."""
+    try:
+        from ml.service import rank
+    except ImportError:
+        return None
+    by_key = {(row["kind"], row["id"]): row for row in rows}
+    results = rank(query, rows=rows, budget=budget, k=limit, mode=mode)
+    return [(by_key[(item["kind"], item["id"])], item["score"])
+            for item in results if item["score"] > 0]
+
+
+def recommend_gifts(db, query, budget=None, limit=10, mode=None):
+    """Rank gifts from every merchant for a free-text request under a UGX ceiling."""
+    mode = mode or RECOMMENDER_MODE
+    rows = gift_catalogue(db)
+    if not query.strip() or not rows:
+        return []
+    ranked = _ml_rank(rows, query, budget, limit, mode) if mode != "builtin" else None
+    if ranked is None:
+        ranked = _builtin_rank(rows, query, budget, limit)
+
+    results = []
+    for row, score in ranked:
+        if row["kind"] == "menu_item":
+            image = menu_item_image(row["image_filename"])
+            buy_url = url_for("buy_menu_item", menu_item_id=row["id"])
+        else:
+            image = row["image_url"]
+            buy_url = url_for("buy_gift", product_id=row["id"])
+        results.append({
+            "kind": row["kind"],
+            "item": {
+                "id": row["id"],
+                "name": row["name"],
+                "variant": row["variant"],
+                "description": row["description"],
+                "category": row["category"],
+            },
+            "merchant": {"id": row["merchant_id"], "name": row["merchant_name"]},
+            "price": row["price_ugx"],
+            "image": image,
+            "buy_url": buy_url,
+            "similarity": score,
+        })
+    return results
+
+
+# Older name kept for callers written when KFC was the only menu merchant.
+recommend_menu_items = recommend_gifts
 
 
 @app.route("/recommend")
@@ -740,7 +807,7 @@ def recommend():
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
     return jsonify({
-        "recommendations": recommend_menu_items(get_db(), query, budget),
+        "recommendations": recommend_gifts(get_db(), query, budget),
         "budget": budget,
     })
 

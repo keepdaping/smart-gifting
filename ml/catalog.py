@@ -2,6 +2,23 @@
 from kfc_menu import KFC_MENU
 
 
+# Curated keywords per merchant category, standing in for the hand-written tags that
+# KFC menu items carry. Only used for rows without tags of their own (fixed products).
+CATEGORY_KEYWORDS = {
+    "Bakery": "cake cakes cupcake cupcakes sweet sweets treat dessert birthday celebration party baked",
+    "Desserts": "sweet sweets treat dessert ice cream birthday celebration",
+    "Pizza": "pizza food meal dinner lunch sharing family friends party",
+    "Food": "food meal lunch dinner",
+    "Fashion": "fashion clothes outfit style accessory wardrobe",
+    "Coffee": "coffee cafe drink breakfast pastry date treat",
+    "Supermarket": "groceries shopping household essentials food family practical",
+    "Groceries": "groceries fruit produce food family household essentials practical",
+    "Electronics": "tech gadget gadgets phone charger headphones earbuds music student study work",
+    "Pharmacy": "health wellness care self-care medicine get well soon recovery",
+    "Books": "book books reading reader novel student study school stationery",
+}
+
+
 def _doc(*parts):
     # The caller repeats tags once so curated keywords weigh a bit more than free text.
     return " ".join(p for p in parts if p)
@@ -27,7 +44,7 @@ def items_from_dicts(rows):
     """
     out = []
     for i, r in enumerate(rows):
-        tags = r.get("tags") or ""
+        tags = r.get("tags") or CATEGORY_KEYWORDS.get(r.get("merchant_category"), "")
         merchant_text = _doc(r.get("merchant_name"), r.get("merchant_category"))
         out.append(dict(id=r.get("id", i), kind=r.get("kind", "menu_item"),
                         merchant_id=r.get("merchant_id"), merchant_name=r.get("merchant_name"),
