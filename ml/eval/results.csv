@@ -1,0 +1,5 @@
+model,precision@5,recall@5,mrr,ndcg@5,queries
+random (floor),0.1953,0.4419,0.3915,0.3206,43
+tfidf (baseline),0.3349,0.7481,0.7961,0.7295,43
+lsa,0.3488,0.7752,0.776,0.7426,43
+hybrid tfidf+lsa,0.3488,0.7752,0.7767,0.7448,43
