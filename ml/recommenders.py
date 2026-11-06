@@ -5,6 +5,7 @@
   EmbeddingRecommender  sentence-transformers (needs one-time model download)
   HybridRecommender     alpha * lexical + (1 - alpha) * semantic
 """
+import hashlib
 import os
 import zlib
 import numpy as np
@@ -28,7 +29,11 @@ class BaseRecommender:
         raise NotImplementedError
 
     def recommend(self, query, budget=None, k=5):
-        """Rank, apply the budget filter AFTER ranking, one result per product name."""
+        """Rank, apply the budget filter AFTER ranking, one result per product per merchant.
+
+        Two merchants may sell items with the same name, so the de-duplication key
+        includes merchant_id (None for the single-merchant KFC evaluation catalogue).
+        """
         s = self.scores(query)
         order = np.argsort(-s, kind="stable")
         seen, out = set(), []
@@ -36,9 +41,10 @@ class BaseRecommender:
             it = self.items[i]
             if budget is not None and it["price_ugx"] > budget:
                 continue
-            if it["name"] in seen:
+            key = (it.get("merchant_id"), it["name"])
+            if key in seen:
                 continue
-            seen.add(it["name"])
+            seen.add(key)
             out.append((it, float(s[i])))
             if len(out) == k:
                 break
@@ -78,12 +84,16 @@ class EmbeddingRecommender(BaseRecommender):
     name = "embed"
 
     def __init__(self, items, model="sentence-transformers/all-MiniLM-L6-v2",
-                 cache="ml/.embed_cache.npy"):
+                 cache_dir="ml"):
         super().__init__(items)
         from sentence_transformers import SentenceTransformer  # optional dependency
         self.model = SentenceTransformer(model)
         docs = [it["doc"] for it in items]
-        if cache and os.path.exists(cache) and np.load(cache).shape[0] == len(docs):
+        # One cache file per catalogue content (not just its length), so a catalogue
+        # with different items or merchants never reuses another's embeddings.
+        digest = hashlib.sha1("\n".join([model, *docs]).encode("utf-8")).hexdigest()[:16]
+        cache = os.path.join(cache_dir, f".embed_cache_{digest}.npy") if cache_dir else None
+        if cache and os.path.exists(cache):
             self.E = np.load(cache)
         else:
             self.E = self.model.encode(docs, normalize_embeddings=True)

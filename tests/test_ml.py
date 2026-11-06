@@ -51,3 +51,58 @@ def test_fraud_simulation_reproducible():
 def test_service_parses_budget_from_text():
     out = suggest("lunch for my brother under 20k", mode="tfidf")
     assert out and all(r["price_ugx"] <= 20000 for r in out)
+
+
+# --- multi-merchant catalogue -------------------------------------------------
+from ml.catalog import items_from_dicts
+from ml.service import get_recommender, rank
+
+
+def _mixed_rows():
+    return [
+        dict(id=1, kind="menu_item", merchant_id=1, merchant_name="KFC", merchant_category="Food",
+             category="Burgers", name="Zinger Burger", variant=None,
+             description="Spicy chicken fillet burger", price_ugx=18000, tags="spicy chicken lunch"),
+        dict(id=7, kind="product", merchant_id=2, merchant_name="Sweet Crumbs Bakery",
+             merchant_category="Bakery", category="Bakery", name="Red Velvet Cupcake Box",
+             description="A box of red velvet cupcakes for sharing.", price_ugx=45000),
+        dict(id=8, kind="product", merchant_id=2, merchant_name="Sweet Crumbs Bakery",
+             merchant_category="Bakery", category="Bakery", name="Celebration Cake",
+             description="A chocolate cake gift for a special celebration.", price_ugx=120000),
+        dict(id=9, kind="product", merchant_id=3, merchant_name="Java House",
+             merchant_category="Coffee", category="Coffee", name="Celebration Cake",
+             description="Cake and coffee for a celebration.", price_ugx=60000),
+    ]
+
+
+def test_items_from_dicts_keeps_merchant_and_kind():
+    items = items_from_dicts(_mixed_rows())
+    assert [i["merchant_id"] for i in items] == [1, 2, 2, 3]
+    assert items[1]["kind"] == "product" and "Bakery" in items[1]["doc"]
+
+
+def test_rank_finds_non_kfc_products_and_respects_budget():
+    rows = _mixed_rows()
+    out = rank("birthday cake", rows=rows, budget=100000, k=5, mode="tfidf")
+    assert out and out[0]["name"] == "Celebration Cake" and out[0]["merchant_id"] == 3
+    assert all(r["price_ugx"] <= 100000 for r in out)
+    assert rank("cupcakes", rows=rows, mode="hybrid")[0]["merchant_name"] == "Sweet Crumbs Bakery"
+
+
+def test_same_name_at_two_merchants_is_not_deduplicated():
+    out = rank("celebration cake", rows=_mixed_rows(), k=5, mode="tfidf")
+    cakes = [(r["merchant_id"], r["name"]) for r in out if r["name"] == "Celebration Cake"]
+    assert sorted(cakes) == [(2, "Celebration Cake"), (3, "Celebration Cake")]
+
+
+def test_recommender_cache_follows_catalogue_content():
+    rows = _mixed_rows()
+    first = get_recommender("tfidf", rows)
+    assert get_recommender("tfidf", [dict(r) for r in rows]) is first
+    changed = [dict(r) for r in rows]
+    changed[1]["price_ugx"] = 50000          # same length, different content
+    assert get_recommender("tfidf", changed) is not first
+
+
+def test_rank_empty_query_returns_nothing():
+    assert rank("   ", rows=_mixed_rows()) == []

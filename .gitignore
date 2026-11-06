@@ -26,3 +26,6 @@ ngrok*
 Thumbs.db
 .vscode/
 .idea/
+
+# ML embedding caches (rebuilt on demand)
+ml/.embed_cache*.npy
