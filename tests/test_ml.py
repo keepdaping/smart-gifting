@@ -107,3 +107,48 @@ def test_recommender_cache_follows_catalogue_content():
 
 def test_rank_empty_query_returns_nothing():
     assert rank("   ", rows=_mixed_rows()) == []
+
+
+# --- fraud scorer across merchants ---------------------------------------------
+from ml.fraud.detect import FraudScorer, normalise_amount
+from ml.fraud.rules import rule_reasons, rule_suspicious
+from ml.fraud.simulate import REFERENCE_AMOUNT_UGX
+
+_SCORER = None
+
+
+def _scorer():
+    global _SCORER
+    _SCORER = _SCORER or FraudScorer()
+    return _SCORER
+
+
+def test_normalise_amount_is_relative_to_the_merchant():
+    assert round(normalise_amount(120000, 120000)) == round(REFERENCE_AMOUNT_UGX)
+    assert normalise_amount(40000, None) == 40000.0
+
+
+def test_same_behaviour_scores_the_same_at_cheap_and_expensive_merchants():
+    # Borderline but legitimate: redeemed 6 h after purchase at 20:00 after one typo.
+    behaviour = dict(hours_since_purchase=6, device_redemptions_1h=1, buyer_vouchers_24h=2,
+                     failed_code_attempts=1, redeem_hour=20)
+    kfc = _scorer().assess(dict(behaviour, amount_ugx=40000), typical_amount_ugx=40000)
+    bakery = _scorer().assess(dict(behaviour, amount_ugx=140000), typical_amount_ugx=120000)
+    raw_bakery = _scorer().assess(dict(behaviour, amount_ugx=140000))
+    assert not kfc["suspicious"] and not bakery["suspicious"]
+    assert raw_bakery["suspicious"]          # what happened before per-merchant scaling
+
+
+def test_blatant_fraud_is_flagged_with_reasons_at_any_price():
+    event = dict(hours_since_purchase=0.1, device_redemptions_1h=6, buyer_vouchers_24h=9,
+                 failed_code_attempts=4, redeem_hour=2)
+    for amount, typical in ((30000, 25000), (140000, 120000)):
+        out = _scorer().assess(dict(event, amount_ugx=amount), typical)
+        assert out["suspicious"] and out["reasons"] and out["method"] == "isolation_forest"
+
+
+def test_rules_have_no_dependencies_and_explain_themselves():
+    event = dict(failed_code_attempts=3, device_redemptions_1h=0, buyer_vouchers_24h=1)
+    assert rule_suspicious(event)
+    assert rule_reasons(event) == ["3 failed code attempts just before"]
+    assert not rule_suspicious(dict(event, failed_code_attempts=2))

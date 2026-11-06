@@ -8,6 +8,10 @@ import pandas as pd
 HERE = os.path.dirname(__file__)
 FEATURES = ["hours_since_purchase", "device_redemptions_1h", "buyer_vouchers_24h",
             "failed_code_attempts", "redeem_hour", "amount_ugx"]
+NORMAL_AMOUNT_LOG_MEAN = 10.6
+# Median amount of a normal synthetic redemption (about UGX 40,000). Live amounts are
+# rescaled to this level per merchant before scoring; see detect.normalise_amount.
+REFERENCE_AMOUNT_UGX = float(np.exp(NORMAL_AMOUNT_LOG_MEAN))
 
 
 def simulate(n=6000, fraud_rate=0.04, seed=42):
@@ -20,7 +24,7 @@ def simulate(n=6000, fraud_rate=0.04, seed=42):
         "buyer_vouchers_24h": rng.poisson(1.2, n_n) + 1,
         "failed_code_attempts": rng.poisson(0.15, n_n),
         "redeem_hour": np.clip(rng.normal(13, 3.5, n_n), 6, 23).astype(int),
-        "amount_ugx": rng.lognormal(10.6, 0.6, n_n).round(-2),
+        "amount_ugx": rng.lognormal(NORMAL_AMOUNT_LOG_MEAN, 0.6, n_n).round(-2),
         "is_fraud": 0, "pattern": "normal"})
     nb = n_f // 2            # blatant fraud: extreme on several signals
     ns = n_f - nb            # subtle fraud: only moderately unusual on several signals

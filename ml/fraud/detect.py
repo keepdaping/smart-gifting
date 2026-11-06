@@ -5,22 +5,22 @@ import os
 import joblib
 import numpy as np
 import pandas as pd
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 from sklearn.ensemble import IsolationForest
 from sklearn.metrics import (precision_score, recall_score, f1_score,
                              confusion_matrix, roc_auc_score)
 from sklearn.model_selection import train_test_split
-from ml.fraud.simulate import simulate, FEATURES
+from ml.fraud.rules import RULE_THRESHOLDS
+from ml.fraud.simulate import simulate, FEATURES, REFERENCE_AMOUNT_UGX
 
 HERE = os.path.dirname(__file__)
 
 
 def rule_flags(df):
     """Fixed-threshold baseline a small business might write by hand."""
-    return ((df.failed_code_attempts >= 3) | (df.device_redemptions_1h >= 5) |
-            (df.buyer_vouchers_24h >= 8)).astype(int).values
+    flags = np.zeros(len(df), dtype=bool)
+    for name, limit in RULE_THRESHOLDS.items():
+        flags |= (df[name] >= limit).values
+    return flags.astype(int)
 
 
 def isolation_forest(train_X, contamination, seed=42):
@@ -36,19 +36,61 @@ def metrics(y, pred):
                 fn=int(fn), tn=int(tn))
 
 
+def normalise_amount(amount_ugx, typical_amount_ugx=None):
+    """Put an amount on the scale the model was trained on, relative to its merchant.
+
+    The model learnt that ~UGX 40,000 is normal. A bakery whose cakes cost 120,000 would
+    otherwise look anomalous on every sale, so amounts are expressed relative to the
+    merchant's typical price and rescaled to the training reference.
+    """
+    if not typical_amount_ugx or typical_amount_ugx <= 0:
+        return float(amount_ugx)
+    return float(amount_ugx) / float(typical_amount_ugx) * REFERENCE_AMOUNT_UGX
+
+
+REASONS = {
+    "hours_since_purchase": "redeemed unusually soon after purchase ({:.1f} h)",
+    "device_redemptions_1h": "{:.0f} vouchers for this recipient redeemed in the last hour",
+    "buyer_vouchers_24h": "sender bought {:.0f} vouchers in 24 h",
+    "failed_code_attempts": "{:.0f} failed code attempts just before",
+    "redeem_hour": "redeemed at an unusual hour ({:02.0f}:00)",
+    "amount_ugx": "value much higher than this store's usual gifts",
+}
+
+
 class FraudScorer:
     """Used by the Flask app on each redemption. 1 = suspicious."""
 
     def __init__(self, path=os.path.join(HERE, "model.joblib")):
         self.model = joblib.load(path)
+        normal = simulate().query("is_fraud == 0")[FEATURES]
+        self._low, self._high = normal.quantile(0.01), normal.quantile(0.99)
+
+    def _frame(self, event):
+        return pd.DataFrame([[event[f] for f in FEATURES]], columns=FEATURES)
 
     def is_suspicious(self, event: dict) -> bool:
-        x = pd.DataFrame([[event[f] for f in FEATURES]], columns=FEATURES)
-        return bool(self.model.predict(x)[0] == -1)
+        return bool(self.model.predict(self._frame(event))[0] == -1)
 
     def score(self, event: dict) -> float:
-        x = pd.DataFrame([[event[f] for f in FEATURES]], columns=FEATURES)
-        return float(-self.model.score_samples(x)[0])  # higher = more anomalous
+        return float(-self.model.score_samples(self._frame(event))[0])  # higher = more anomalous
+
+    def reasons(self, event: dict) -> list:
+        """Signals outside the 1st-99th percentile of normal (synthetic) redemptions."""
+        out = []
+        for name in FEATURES:
+            value = event[name]
+            low_is_odd = name in ("hours_since_purchase", "redeem_hour")
+            if value > self._high[name] or (low_is_odd and value < self._low[name]):
+                out.append(REASONS[name].format(value))
+        return out
+
+    def assess(self, event: dict, typical_amount_ugx=None) -> dict:
+        """Score one redemption for any merchant. `event` holds the raw amount in UGX."""
+        event = dict(event, amount_ugx=normalise_amount(event["amount_ugx"], typical_amount_ugx))
+        suspicious = self.is_suspicious(event)
+        return {"suspicious": suspicious, "score": round(self.score(event), 4),
+                "reasons": self.reasons(event) if suspicious else [], "method": "isolation_forest"}
 
 
 def main():
@@ -77,6 +119,9 @@ def main():
     print(md)
     open(os.path.join(HERE, "results.md"), "w", encoding="utf-8").write(md + "\n")
 
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
     fig, ax = plt.subplots(1, 2, figsize=(8, 3.4))
     for a, (title, p) in zip(ax, (("Fixed rules", pred_rule), ("Isolation Forest", pred_if))):
         cm = confusion_matrix(y, p)

@@ -1,9 +1,14 @@
 """The ML recommender and fraud check inside the Flask app, across every merchant."""
+import re
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest import mock
 
-from app import app, connect, gift_catalogue, init_db, recommend_gifts, seed_db
+import app as app_module
+from app import (app, assess_redemption, connect, fetch_voucher, gift_catalogue, init_db,
+                 recommend_gifts, redemption_features, seed_db)
 from catalogue import MERCHANTS
 from seed_kfc import seed_kfc
 
@@ -102,6 +107,146 @@ class RecommenderAcrossMerchantsTests(MlAppTestCase):
     def test_nonsense_query_returns_nothing(self):
         data = self.client.get("/recommend?q=zzqxv").get_json()
         self.assertEqual(data["recommendations"], [])
+
+
+def frozen_datetime(moment):
+    """A datetime class whose now() is fixed, so hour-of-day features are repeatable."""
+    class Frozen(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return moment.astimezone(tz) if tz else moment.replace(tzinfo=None)
+    return Frozen
+
+
+EAT = timezone(timedelta(hours=3))
+AFTERNOON = datetime(2026, 11, 6, 13, 0, tzinfo=EAT).astimezone(timezone.utc)
+NIGHT = datetime(2026, 11, 6, 2, 0, tzinfo=EAT).astimezone(timezone.utc)
+FMT = "%Y-%m-%d %H:%M:%S"
+
+
+class FraudCheckAcrossMerchantsTests(MlAppTestCase):
+    def add_voucher(self, code, merchant, title, created, sender="A Person",
+                    phone="+256770123456"):
+        merchant_id = self.merchant_id(merchant)
+        db = connect(self.database)
+        row = db.execute("SELECT id, price_ugx AS price FROM menu_items WHERE merchant_id=? AND name=?",
+                         (merchant_id, title)).fetchone()
+        column = "menu_item_id"
+        if row is None:
+            row = db.execute("SELECT id, monetary_value AS price FROM products "
+                             "WHERE merchant_id=? AND title=?", (merchant_id, title)).fetchone()
+            column = "product_id"
+        db.execute(f"INSERT INTO vouchers (voucher_code, merchant_id, {column}, sender_name, "
+                   "recipient_phone, monetary_value, price_at_purchase, created_at) "
+                   "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                   (code, merchant_id, row["id"], sender, phone, row["price"], row["price"],
+                    created.strftime(FMT)))
+        db.commit()
+        db.close()
+        return merchant_id
+
+    def assess(self, code, merchant_id, now, client_key="till"):
+        db = connect(self.database)
+        with app.test_request_context(), \
+                mock.patch.object(app_module, "datetime", frozen_datetime(now)):
+            voucher = fetch_voucher(db, code)
+            features = redemption_features(db, voucher, merchant_id, client_key)
+            risk = assess_redemption(db, voucher, merchant_id, client_key)
+        db.close()
+        return features, risk
+
+    def test_ordinary_redemptions_are_not_flagged_at_any_merchant(self):
+        gifts = [("KFC", "Streetwise 2"), ("Sweet Crumbs Bakery", "Rainbow Layer Cake"),
+                 ("TechHub Gadgets", "Wireless Earbuds"), ("Scoop & Smile Desserts", "Ice Cream Sundae")]
+        for number, (merchant, title) in enumerate(gifts):
+            with self.subTest(merchant=merchant):
+                code = f"GIFT-OKAY-000{number}"
+                merchant_id = self.add_voucher(code, merchant, title, AFTERNOON - timedelta(hours=30),
+                                               sender=f"Sender {number}", phone=f"+25677000000{number}")
+                features, risk = self.assess(code, merchant_id, AFTERNOON)
+                self.assertEqual(features["redeem_hour"], 13)
+                self.assertAlmostEqual(features["hours_since_purchase"], 30.0)
+                self.assertEqual(risk["method"], "isolation_forest")
+                self.assertFalse(risk["suspicious"], risk)
+
+    def test_features_count_recipient_sender_and_failed_attempts(self):
+        created = NIGHT - timedelta(minutes=10)
+        bakery = self.add_voucher("GIFT-FEAT-0000", "Sweet Crumbs Bakery", "Celebration Cake", created,
+                                  sender="Mallory", phone="+256770999999")
+        kfc = self.merchant_id("KFC")
+        db = connect(self.database)
+        for i in range(1, 4):  # same sender (any case), another store, same recipient, redeemed
+            db.execute("INSERT INTO vouchers (voucher_code, merchant_id, sender_name, recipient_phone, "
+                       "monetary_value, status, created_at) VALUES (?, ?, 'mallory', '+256770999999', "
+                       "20000, 'USED', ?)",
+                       (f"GIFT-FEAT-000{i}", kfc, (created - timedelta(hours=i)).strftime(FMT)))
+            db.execute("INSERT INTO audit_log (voucher_code, merchant_id, outcome, created_at) "
+                       "VALUES (?, ?, 'REDEEMED', ?)",
+                       (f"GIFT-FEAT-000{i}", kfc, (NIGHT - timedelta(minutes=5 * i)).strftime(FMT)))
+        for _ in range(2):
+            db.execute("INSERT INTO audit_log (voucher_code, merchant_id, outcome, created_at, client_key) "
+                       "VALUES ('GIFT-NOPE-NOPE', ?, 'NOT_FOUND', ?, 'till')",
+                       (bakery, (NIGHT - timedelta(minutes=1)).strftime(FMT)))
+        db.commit()
+        db.close()
+        features, _risk = self.assess("GIFT-FEAT-0000", bakery, NIGHT)
+        self.assertEqual(features["device_redemptions_1h"], 3)
+        self.assertEqual(features["buyer_vouchers_24h"], 4)
+        self.assertEqual(features["failed_code_attempts"], 2)
+        self.assertEqual(features["redeem_hour"], 2)
+        self.assertEqual(features["amount_ugx"], 120000)
+
+    def stage_suspicious_bakery_voucher(self):
+        """A code bought minutes ago by a sender who just bought many, redeemed at 2am."""
+        created = NIGHT - timedelta(minutes=5)
+        bakery = self.add_voucher("GIFT-RISK-0000", "Sweet Crumbs Bakery", "Celebration Cake", created,
+                                  sender="Mallory", phone="+256770999999")
+        db = connect(self.database)
+        for i in range(1, 10):
+            db.execute("INSERT INTO vouchers (voucher_code, merchant_id, sender_name, recipient_phone, "
+                       "monetary_value, created_at) VALUES (?, ?, 'Mallory', '+256770999999', 45000, ?)",
+                       (f"GIFT-RISK-{i:04d}", bakery, (created - timedelta(minutes=i)).strftime(FMT)))
+        db.commit()
+        db.close()
+        return bakery
+
+    def test_suspicious_redemption_is_flagged_shown_and_recorded(self):
+        bakery = self.stage_suspicious_bakery_voucher()
+        with mock.patch.object(app_module, "datetime", frozen_datetime(NIGHT)):
+            with self.client.session_transaction() as session:
+                session["cashier"] = {"merchant_id": bakery, "name": "Sweet Crumbs Bakery"}
+            page = self.client.get("/merchant/verify?code=GIFT-RISK-0000").get_data(as_text=True)
+            self.assertIn("data-fraud-flag", page)
+            self.assertIn("sender bought 10 vouchers in 24 h", page)
+            csrf = re.search(r'name="csrf_token" value="([^"]+)"', page).group(1)
+            response = self.client.post("/merchant/redeem", follow_redirects=True,
+                                        data={"csrf_token": csrf, "voucher_code": "GIFT-RISK-0000"})
+        html = response.get_data(as_text=True)
+        self.assertIn("GIFT-RISK-0000 redeemed", html)          # advisory: never blocks
+        self.assertIn("Fraud check flagged this redemption", html)
+        self.assertIn("Flagged", html)
+        db = connect(self.database)
+        row = db.execute("SELECT risk_flag, risk_score, client_key FROM audit_log "
+                         "WHERE voucher_code='GIFT-RISK-0000' AND outcome='REDEEMED'").fetchone()
+        status = db.execute("SELECT status FROM vouchers WHERE voucher_code='GIFT-RISK-0000'").fetchone()[0]
+        db.close()
+        self.assertEqual((row["risk_flag"], status), (1, "USED"))
+        self.assertGreater(row["risk_score"], 0)
+        self.assertTrue(row["client_key"])
+
+    def test_rules_are_used_when_the_model_is_unavailable(self):
+        bakery = self.stage_suspicious_bakery_voucher()
+        with mock.patch.object(app_module, "_fraud_scorer", False):
+            _features, risk = self.assess("GIFT-RISK-0000", bakery, NIGHT)
+        self.assertEqual(risk["method"], "rules")
+        self.assertTrue(risk["suspicious"])
+        self.assertIn("sender bought 10 vouchers in 24 h", risk["reasons"])
+
+    def test_fraud_check_can_be_switched_off(self):
+        bakery = self.stage_suspicious_bakery_voucher()
+        with mock.patch.object(app_module, "FRAUD_CHECK", False):
+            _features, risk = self.assess("GIFT-RISK-0000", bakery, NIGHT)
+        self.assertIsNone(risk)
 
 
 if __name__ == "__main__":

@@ -210,6 +210,8 @@ def init_db(path=None):
         "client_key": "TEXT",
         "menu_item_id": "INTEGER REFERENCES menu_items(id)",
         "cashier": "TEXT",
+        "risk_score": "REAL",
+        "risk_flag": "INTEGER",
     })
 
     voucher_columns = {
@@ -1001,13 +1003,101 @@ def client_rate_limit_key():
     return hmac.new(secret, address.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
-def log_event(db, code, merchant_id, outcome, client_key=None, menu_item_id=None, cashier=None):
+def log_event(db, code, merchant_id, outcome, client_key=None, menu_item_id=None, cashier=None,
+              risk=None):
     db.execute(
         "INSERT INTO audit_log (voucher_code, merchant_id, outcome, created_at, client_key, "
-        "menu_item_id, cashier) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (code[:24], merchant_id, outcome, utc_now(), client_key, menu_item_id, cashier),
+        "menu_item_id, cashier, risk_score, risk_flag) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (code[:24], merchant_id, outcome, utc_now(), client_key, menu_item_id, cashier,
+         risk["score"] if risk else None,
+         int(risk["suspicious"]) if risk else None),
     )
     db.commit()
+
+
+# --------------------------------------------------------------------------
+# Fraud check (advisory): flags unusual redemptions for the cashier, never blocks.
+# The model is trained on SYNTHETIC data, so a flag asks the cashier to double-check
+# the recipient rather than refusing a customer.
+# --------------------------------------------------------------------------
+FRAUD_CHECK = os.environ.get("FRAUD_CHECK", "1") != "0"
+_fraud_scorer = None  # None = not loaded yet, False = model unavailable
+
+
+def fraud_scorer():
+    """Load the Isolation Forest once; None when scikit-learn or the model is missing."""
+    global _fraud_scorer
+    if _fraud_scorer is None:
+        try:
+            from ml.fraud.detect import FraudScorer
+            _fraud_scorer = FraudScorer()
+        except Exception as exc:  # ImportError, missing file, incompatible pickle
+            app.logger.warning("Fraud model unavailable (%s); using fixed rules.", exc)
+            _fraud_scorer = False
+    return _fraud_scorer or None
+
+
+def merchant_typical_amount(db, merchant_id):
+    """Median price of what this merchant currently sells (None if nothing is listed)."""
+    prices = sorted(row["price_ugx"] for row in gift_catalogue(db)
+                    if row["merchant_id"] == merchant_id and row["price_ugx"] > 0)
+    if not prices:
+        return None
+    middle = len(prices) // 2
+    return prices[middle] if len(prices) % 2 else (prices[middle - 1] + prices[middle]) / 2
+
+
+def redemption_features(db, voucher, merchant_id, client_key):
+    """The six model features for redeeming `voucher` now, at this merchant's till."""
+    now = datetime.now(timezone.utc)
+    fmt = "%Y-%m-%d %H:%M:%S"
+    try:
+        created = datetime.strptime(voucher["created_at"], fmt).replace(tzinfo=timezone.utc)
+        hours_since_purchase = max((now - created).total_seconds() / 3600, 0.0)
+    except (TypeError, ValueError):
+        created, hours_since_purchase = now, 24.0  # legacy row without a usable timestamp
+    hour_ago = (now - timedelta(hours=1)).strftime(fmt)
+    # "Device" = the recipient's phone: many codes funnelled to one phone in an hour,
+    # at any store. (The cashier's till is not used: a busy till redeems a lot.)
+    recipient_redemptions = db.execute(
+        "SELECT COUNT(*) FROM audit_log a JOIN vouchers v ON v.voucher_code = a.voucher_code "
+        "WHERE a.outcome = 'REDEEMED' AND v.recipient_phone = ? AND a.created_at >= ?",
+        (voucher["recipient_phone"], hour_ago)).fetchone()[0]
+    # Buyer = sender name (there are no buyer accounts), across every merchant.
+    buyer_vouchers = db.execute(
+        "SELECT COUNT(*) FROM vouchers WHERE LOWER(sender_name) = LOWER(?) "
+        "AND created_at > ? AND created_at <= ?",
+        (voucher["sender_name"], (created - timedelta(hours=24)).strftime(fmt),
+         created.strftime(fmt))).fetchone()[0]
+    failed_attempts = db.execute(
+        "SELECT COUNT(*) FROM audit_log WHERE merchant_id = ? AND client_key = ? "
+        "AND outcome IN ('NOT_FOUND', 'WRONG_STORE') AND created_at >= ?",
+        (merchant_id, client_key,
+         (now - timedelta(minutes=LOOKUP_WINDOW_MINUTES)).strftime(fmt))).fetchone()[0]
+    return {
+        "hours_since_purchase": hours_since_purchase,
+        "device_redemptions_1h": recipient_redemptions,
+        "buyer_vouchers_24h": max(buyer_vouchers, 1),
+        "failed_code_attempts": failed_attempts,
+        "redeem_hour": now.astimezone(EAT).hour,
+        "amount_ugx": voucher["price_at_purchase"] or voucher["monetary_value"],
+    }
+
+
+def assess_redemption(db, voucher, merchant_id, client_key):
+    """Fraud assessment for any merchant: {suspicious, score, reasons, method} or None."""
+    if not FRAUD_CHECK:
+        return None
+    event = redemption_features(db, voucher, merchant_id, client_key)
+    scorer = fraud_scorer()
+    if scorer is not None:
+        try:
+            return scorer.assess(event, merchant_typical_amount(db, merchant_id))
+        except Exception as exc:
+            app.logger.warning("Fraud model failed (%s); using fixed rules.", exc)
+    from ml.fraud.rules import rule_reasons, rule_suspicious
+    return {"suspicious": rule_suspicious(event), "score": None,
+            "reasons": rule_reasons(event), "method": "rules"}
 
 
 def evaluate_voucher(db, cashier, code, log, client_key=None):
@@ -1099,6 +1189,9 @@ def merchant_verify():
 
     code = normalise_code(request.args.get("code", "")) if request.args.get("code") else None
     result = evaluate_voucher(db, cashier, code, log=False) if code else None
+    if result and result["state"] == "active":
+        result["risk"] = assess_redemption(db, result["voucher"], cashier["merchant_id"],
+                                           client_rate_limit_key())
     return render_template("verify.html", result=result,
                            prefill=request.args.get("prefill", ""),
                            stats=cashier_stats(db, cashier["merchant_id"]),
@@ -1166,6 +1259,8 @@ def merchant_redeem():
         return redirect(url_for("merchant_verify"))
     result = evaluate_voucher(db, cashier, code, log=True, client_key=client_key)
     if result["state"] == "active":
+        # Scored before the status flips, so this redemption does not count itself.
+        risk = assess_redemption(db, result["voucher"], cashier["merchant_id"], client_key)
         # Atomic compare-and-set: only one request can flip ACTIVE -> USED.
         cur = db.execute(
             "UPDATE vouchers SET status = 'USED', redeemed_at = ? "
@@ -1175,10 +1270,14 @@ def merchant_redeem():
         if cur.rowcount == 1:
             voucher = result["voucher"]
             log_event(
-                db, code, cashier["merchant_id"], "REDEEMED",
-                menu_item_id=voucher["menu_item_id"], cashier=cashier["name"],
+                db, code, cashier["merchant_id"], "REDEEMED", client_key=client_key,
+                menu_item_id=voucher["menu_item_id"], cashier=cashier["name"], risk=risk,
             )
             flash(f"{code} redeemed. Hand over the gift.", "success")
+            if risk and risk["suspicious"]:
+                flash("Fraud check flagged this redemption"
+                      + (f" ({'; '.join(risk['reasons'])})" if risk["reasons"] else "")
+                      + ". It has been recorded for review.", "warning")
         else:
             log_event(db, code, cashier["merchant_id"], "ALREADY_USED")
             flash("Another cashier just redeemed this voucher. Do not hand over the gift.", "warning")

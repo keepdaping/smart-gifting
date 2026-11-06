@@ -92,6 +92,16 @@
                         <div><dt>Sent to</dt><dd>{{ result.voucher.recipient_phone|phone }}</dd></div>
                         <div><dt>Created</dt><dd>{{ result.voucher.created_at|eat }}</dd></div>
                     </dl>
+                    {% if result.risk and result.risk.suspicious %}
+                    <div class="alert alert-warning small" role="alert" data-fraud-flag>
+                        <i class="bi bi-shield-exclamation me-1"></i>
+                        <strong>Fraud check: unusual redemption.</strong>
+                        Confirm the recipient's phone number before handing over the gift.
+                        {% if result.risk.reasons %}
+                        <ul class="mb-0 mt-1">{% for reason in result.risk.reasons %}<li>{{ reason }}</li>{% endfor %}</ul>
+                        {% endif %}
+                    </div>
+                    {% endif %}
                     <form method="POST" action="{{ url_for('merchant_redeem') }}" data-confirm="Redeem {{ result.code }} now? This cannot be undone.">
                         {{ csrf_field() }}
                         <input type="hidden" name="voucher_code" value="{{ result.code }}">
@@ -155,7 +165,8 @@
                                     <span class="text-muted d-block">{{ row.monetary_value|ugx }}{% if row.cashier %} · {{ row.cashier }}{% endif %}</span>
                                 {% else %}<span class="text-muted">No matching voucher</span>{% endif %}
                             </td>
-                            <td class="text-end"><span class="outcome outcome--{{ color }}"><i class="bi {{ icon }}"></i> {{ label }}</span></td>
+                            <td class="text-end"><span class="outcome outcome--{{ color }}"><i class="bi {{ icon }}"></i> {{ label }}</span>
+                                {% if row.risk_flag %}<span class="outcome outcome--warning d-block mt-1" title="Flagged by the fraud check"><i class="bi bi-shield-exclamation"></i> Flagged</span>{% endif %}</td>
                         </tr>
                         {% endfor %}
                         </tbody>
