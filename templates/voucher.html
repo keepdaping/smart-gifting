@@ -13,6 +13,7 @@
         <span class="eyebrow eyebrow--muted d-block mb-2">Your digital gift ticket</span>
         <h1 class="h2 mb-2">{{ voucher.sender_name }} sent you a gift</h1>
         <p class="text-muted mb-0">Show this ticket to a cashier at <strong>{{ voucher.merchant_name }}</strong>.</p>
+        {% if price_notice %}<p class="small text-warning-emphasis mt-2 mb-0">{{ price_notice }}</p>{% endif %}
     </div>
 
     <div class="ticket ticket--full {{ '' if is_active else 'ticket--spent' }}">

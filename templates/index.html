@@ -82,6 +82,9 @@
                     <h3 class="store-card__name">
                         <a href="{{ url_for('store_catalog', merchant_id=m.id) }}" class="stretched-link">{{ m.name }}</a>
                     </h3>
+                    {% if m.name == 'Sweet Crumbs Bakery' %}
+                    <span class="badge text-bg-warning mb-2">Proposed prices</span>
+                    {% endif %}
                     <p class="store-card__desc">{{ m.description }}</p>
                     <p class="store-card__match" hidden></p>
                     <div class="store-card__foot">

@@ -95,10 +95,13 @@
     <div class="section-heading">
         <div>
             <span class="eyebrow eyebrow--muted">Pick something they'll love</span>
-            <h2 class="h2 mb-1">Gift packages</h2>
+            <h2 class="h2 mb-1">{{ 'Bakery gifts' if merchant.name == 'Sweet Crumbs Bakery' else 'Gift packages' }}</h2>
         </div>
         <span class="results-pill">{{ products|length }} available</span>
     </div>
+    {% if price_notice %}
+    <div class="alert alert-warning" role="note">{{ price_notice }}</div>
+    {% endif %}
     {% if products %}
     <div class="row g-3 g-lg-4">
         {% for p in products %}

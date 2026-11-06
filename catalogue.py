@@ -14,16 +14,26 @@ MERCHANTS = [
     {
         "name": "Sweet Crumbs Bakery",
         "category": "Bakery",
-        "description": "Freshly baked treats for birthdays and everyday celebrations.",
+        "description": "Cakes and cupcakes selected for a thoughtful celebration gift.",
         "icon": "bi-cake2",
         "accent": "#B45309",
-        "photo": None,
+        "photo": "/assets/images/gallery/bakery-interior.jpg",
         "products": [
-            ("Celebration Cake", 90000, "A freshly decorated cake for a special day.", None),
-            ("Cupcake Box", 35000, "A box of assorted bakery-fresh cupcakes.", None),
-            ("Pastry Breakfast", 25000, "A selection of pastries to start the day.", None),
-            ("Bread Basket", 20000, "A selection of freshly baked breads.", None),
+            ("Celebration Cake", 120000, "A chocolate cake gift for a special celebration.", "/assets/images/hero/chocolate-celebration-cake.jpg"),
+            ("Pink Celebration Cake", 110000, "A pink celebration cake for a birthday or party.", "/assets/images/products/cakes/pink-party-cake.jpg"),
+            ("Rainbow Layer Cake", 140000, "A colourful layer cake for a joyful occasion.", "/assets/images/products/cakes/rainbow-layer-cake.jpg"),
+            ("Chocolate Pudding Cake", 95000, "A rich chocolate cake to share with someone special.", "/assets/images/products/cakes/chocolate-pudding-cake.jpg"),
+            ("Blueberry Cheesecake", 105000, "A blueberry cheesecake for a thoughtful treat.", "/assets/images/products/cakes/blueberry-cheesecake.jpg"),
+            ("Vanilla Sprinkle Cupcake Box", 40000, "A cheerful box of vanilla sprinkle cupcakes.", "/assets/images/products/cupcakes/vanilla-sprinkle-cupcakes.jpg"),
+            ("Red Velvet Cupcake Box", 45000, "A box of red velvet cupcakes for sharing.", "/assets/images/products/cupcakes/red-velvet-cupcake.jpg"),
+            ("Pink Celebration Cupcake Box", 45000, "A pink cupcake gift box for a celebration.", "/assets/images/products/cupcakes/pink-celebration-cupcakes.jpg"),
+            ("Pastel Cupcake Gift Box", 42000, "A gift box of pastel-coloured cupcakes.", "/assets/images/products/cupcakes/pastel-cupcakes-lifestyle.jpg"),
+            ("Mint Cupcake Assortment", 45000, "An assortment of mint cupcakes to enjoy together.", "/assets/images/products/cupcakes/mint-cupcake-assortment.jpg"),
+            ("Mint Chocolate Cupcake Box", 42000, "A box of mint chocolate cupcakes.", "/assets/images/products/cupcakes/mint-chocolate-cupcake.jpg"),
+            ("Chocolate Frosted Cupcake Box", 42000, "A box of chocolate-frosted cupcakes.", "/assets/images/products/cupcakes/chocolate-frosted-cupcakes.jpg"),
+            ("Caramel Nut Cupcake Box", 45000, "A box of caramel nut cupcakes.", "/assets/images/products/cupcakes/caramel-nut-cupcake.jpg"),
         ],
+        "retired_products": ["Cupcake Box", "Pastry Breakfast", "Bread Basket"],
     },
     {
         "name": "Scoop & Smile Desserts",
@@ -197,6 +207,8 @@ def image_url(photo):
     photo = photo.strip()
     if not photo:
         return None
+    if photo.startswith("/assets/images/"):
+        return photo
     if photo.startswith(("https://", "http://")):
         return photo
     if photo.startswith("//"):

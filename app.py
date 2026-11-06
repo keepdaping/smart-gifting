@@ -38,7 +38,7 @@ from urllib.parse import quote
 
 import click
 from flask import (Flask, abort, flash, g, jsonify, redirect, render_template,
-                   request, session, url_for)
+                   request, send_from_directory, session, url_for)
 from markupsafe import Markup, escape
 from werkzeug.middleware.proxy_fix import ProxyFix
 
@@ -76,6 +76,10 @@ LOOKUP_WINDOW_MINUTES = 5
 KFC_CATEGORIES = (
     "Wings", "Streetwise", "Burgers & Wraps", "Boxes & Strips",
     "Bucket Meals", "Buckets", "Sides", "Desserts", "Drinks",
+)
+SWEET_CRUMBS_PRICE_NOTICE = (
+    "Proposed demo prices pending confirmation from Sweet Crumbs Bakery; "
+    "these are not confirmed bakery prices."
 )
 
 PAYMENT_METHODS = {
@@ -274,12 +278,14 @@ def init_db(path=None):
     conn.close()
 
 
-def seed_db(path=None):
-    """Insert or refresh every partner store and package (idempotent, no duplicates)."""
+def seed_db(path=None, merchant_name=None):
+    """Insert or refresh partner stores and packages (idempotent, no duplicates)."""
     conn = connect(path)
     cur = conn.cursor()
     try:
         for m in MERCHANTS:
+            if merchant_name and m["name"] != merchant_name:
+                continue
             row = cur.execute("SELECT id FROM merchants WHERE name = ?", (m["name"],)).fetchone()
             if not row and m["name"] == "KFC":
                 row = cur.execute(
@@ -317,6 +323,16 @@ def seed_db(path=None):
                         "VALUES (?, ?, ?, ?, ?)",
                         (merchant_id, title, value, description, image_url(photo)),
                     )
+            for title in m.get("retired_products", ()):
+                product = cur.execute(
+                    "SELECT id FROM products WHERE merchant_id=? AND title=?",
+                    (merchant_id, title),
+                ).fetchone()
+                if product and not cur.execute(
+                    "SELECT 1 FROM vouchers WHERE product_id=? LIMIT 1",
+                    (product["id"],),
+                ).fetchone():
+                    cur.execute("DELETE FROM products WHERE id=?", (product["id"],))
         conn.commit()
     finally:
         conn.close()
@@ -337,6 +353,18 @@ def seed_kfc_command():
 
     count = seed_kfc(app.config["DATABASE"])
     print(f"Seeded {count} KFC menu variants.")
+
+
+@app.cli.command("seed-sweet-crumbs")
+def seed_sweet_crumbs_command():
+    """Create/update Sweet Crumbs Bakery products in the standard product catalogue."""
+    seed_db(app.config["DATABASE"], merchant_name="Sweet Crumbs Bakery")
+    count = get_db().execute("""
+        SELECT COUNT(*) FROM products p
+        JOIN merchants m ON m.id=p.merchant_id
+        WHERE m.name='Sweet Crumbs Bakery'
+    """).fetchone()[0]
+    click.echo(f"Seeded {count} Sweet Crumbs Bakery products.")
 
 
 @app.cli.command("check-kfc-images")
@@ -547,6 +575,12 @@ def index():
     return render_template("index.html", merchants=merchants, categories=list(categories.items()))
 
 
+@app.route("/assets/images/<path:filename>")
+def bakery_image(filename):
+    """Serve the curated bakery images without exposing other workspace files."""
+    return send_from_directory(BASE_DIR / "assets" / "images", filename)
+
+
 @app.route("/store/<int:merchant_id>")
 def store_catalog(merchant_id):
     db = get_db()
@@ -588,7 +622,9 @@ def store_catalog(merchant_id):
         "SELECT * FROM products WHERE merchant_id = ? ORDER BY monetary_value", (merchant_id,)
     ).fetchall()
     return render_template("store.html", merchant=merchant, products=products,
-                           menu_categories=[], menu_item_count=0)
+                           menu_categories=[], menu_item_count=0,
+                           price_notice=(SWEET_CRUMBS_PRICE_NOTICE
+                                         if merchant["name"] == "Sweet Crumbs Bakery" else None))
 
 
 def parse_budget(query, supplied_budget=None):
@@ -831,7 +867,9 @@ def _buy(product_id=None, menu_item_id=None):
 
     status = 400 if errors else 200
     return render_template("buy.html", product=product, form=form, errors=errors,
-                           payment_methods=PAYMENT_METHODS, max_message=MAX_MESSAGE_LEN), status
+                           payment_methods=PAYMENT_METHODS, max_message=MAX_MESSAGE_LEN,
+                           price_notice=(SWEET_CRUMBS_PRICE_NOTICE
+                                         if product["merchant_name"] == "Sweet Crumbs Bakery" else None)), status
 
 
 def fetch_voucher(db, code):
@@ -850,8 +888,12 @@ def fetch_voucher(db, code):
 
 def build_share(voucher, link):
     """Prepare WhatsApp / SMS deep links and the message text for the share modal."""
+    price_note = (
+        " Proposed demo price pending bakery confirmation."
+        if voucher["merchant_name"] == "Sweet Crumbs Bakery" else ""
+    )
     text = (f"{voucher['sender_name']} sent you a gift on Smart Gifting: {voucher['product_title']} "
-            f"at {voucher['merchant_name']} ({ugx_filter(voucher['monetary_value'])}). "
+            f"at {voucher['merchant_name']} ({ugx_filter(voucher['monetary_value'])}).{price_note} "
             f"Open your voucher: {link}  Code: {voucher['voucher_code']}")
     phone = normalise_phone(voucher["recipient_phone"]) or voucher["recipient_phone"]
     digits = re.sub(r"\D", "", phone)
@@ -877,7 +919,9 @@ def view_voucher(voucher_code):
         session.pop("just_purchased", None)
     link = url_for("view_voucher", voucher_code=code, _external=True)
     return render_template("voucher.html", voucher=voucher, share=build_share(voucher, link),
-                           show_share=show_share)
+                           show_share=show_share,
+                           price_notice=(SWEET_CRUMBS_PRICE_NOTICE
+                                         if voucher["merchant_name"] == "Sweet Crumbs Bakery" else None))
 
 
 # --------------------------------------------------------------------------
@@ -991,7 +1035,9 @@ def merchant_verify():
     return render_template("verify.html", result=result,
                            prefill=request.args.get("prefill", ""),
                            stats=cashier_stats(db, cashier["merchant_id"]),
-                           trail=audit_trail(db, cashier["merchant_id"]))
+                           trail=audit_trail(db, cashier["merchant_id"]),
+                           price_notice=(SWEET_CRUMBS_PRICE_NOTICE
+                                         if cashier["name"] == "Sweet Crumbs Bakery" else None))
 
 
 @app.route("/merchant/login", methods=["POST"])
