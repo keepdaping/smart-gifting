@@ -4,8 +4,12 @@
 | tfidf (baseline) | 0.335 | 0.748 | 0.796 | 0.730 | 43 |
 | lsa | 0.349 | 0.775 | 0.776 | 0.743 | 43 |
 | hybrid tfidf+lsa | 0.349 | 0.775 | 0.777 | 0.745 | 43 |
+| embeddings | 0.349 | 0.756 | 0.769 | 0.716 | 43 |
+| hybrid tfidf+embeddings | 0.377 | 0.806 | 0.852 | 0.793 | 43 |
 
 Per-query NDCG@5 vs baseline (wins / ties / losses, bootstrap p):
 - random (floor): 8/2/33, p = 1.000
 - lsa: 7/32/4, p = 0.240
 - hybrid tfidf+lsa: 6/34/3, p = 0.188
+- embeddings: 12/18/13, p = 0.621
+- hybrid tfidf+embeddings: 12/26/5, p = 0.005
