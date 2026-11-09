@@ -187,6 +187,28 @@ document.addEventListener("DOMContentLoaded", () => {
         updateMenuVariant();
     });
 
+    document.querySelectorAll(".menu-variant-option").forEach((option) => {
+        option.addEventListener("change", () => {
+            const card = option.closest(".product-card");
+            const price = card?.querySelector(".menu-price");
+            const description = card?.querySelector(".menu-item-description");
+            const giftButton = card?.querySelector(".menu-gift");
+            if (price) {
+                price.textContent = `UGX ${Number(option.dataset.price).toLocaleString("en-US")}`;
+            }
+            if (description && option.dataset.description) {
+                description.textContent = option.dataset.description;
+            }
+            if (giftButton) {
+                giftButton.href = option.dataset.buyUrl || "#";
+            }
+            const label = card?.querySelector(".price__label");
+            if (label) {
+                label.textContent = "Price";
+            }
+        });
+    });
+
     document.querySelectorAll(".kfc-menu-tab").forEach((tab) => {
         tab.addEventListener("click", () => {
             const target = document.querySelector(tab.dataset.bsTarget || "");
@@ -202,6 +224,7 @@ document.addEventListener("DOMContentLoaded", () => {
             });
             panels.forEach((panel) => panel.classList.remove("show", "active"));
             target.classList.add("show", "active");
+            tab.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
         });
     });
 

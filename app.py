@@ -7,6 +7,7 @@ cashier at that store verifies and redeems the code exactly once.
 Architecture
 ------------
 * ``catalogue.py``  - partner stores and gift packages (seed data).
+* ``kfc_menu.py`` / ``store_menus.py`` - item menus for every store.
 * ``app.py``        - routes, validation, security and the SQLite data layer.
 * ``templates/``    - Jinja2 views (Bootstrap 5 plus ``static/css/app.css``).
 * ``static/js/``    - progressive enhancement (search, validation, share modal).
@@ -43,6 +44,7 @@ from markupsafe import Markup, escape
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from catalogue import MERCHANTS, image_url
+from store_menus import STORE_MENUS
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -81,6 +83,20 @@ SWEET_CRUMBS_PRICE_NOTICE = (
     "Proposed demo prices pending confirmation from Sweet Crumbs Bakery; "
     "these are not confirmed bakery prices."
 )
+KFC_NOTE = "Demo data from KFC Uganda menu. Prices may vary by branch. Not affiliated with KFC."
+
+
+def store_profile(merchant_name):
+    """Section order, slug and footnote for a store's menu page."""
+    if merchant_name == "KFC":
+        return {"slug": "kfc", "sections": list(KFC_CATEGORIES), "price_note": KFC_NOTE}
+    store = STORE_MENUS.get(merchant_name, {})
+    slug = store.get("slug") or re.sub(r"[^a-z0-9]+", "-", merchant_name.lower()).strip("-")
+    return {
+        "slug": slug,
+        "sections": list(store.get("sections", [])),
+        "price_note": store.get("price_note", "Demo prices for an academic project. Prices may vary in store."),
+    }
 
 PAYMENT_METHODS = {
     "mtn": "MTN Mobile Money",
@@ -345,7 +361,9 @@ def bootstrap(path=None):
     init_db(path)
     seed_db(path)
     from seed_kfc import seed_kfc
+    from seed_menus import seed_menus
     seed_kfc(path)
+    seed_menus(path)
 
 
 @app.cli.command("seed-kfc")
@@ -368,17 +386,37 @@ def seed_sweet_crumbs_command():
     """).fetchone()[0]
     click.echo(f"Seeded {count} Sweet Crumbs Bakery products.")
 
+@app.cli.command("seed-menus")
+def seed_menus_command():
+    """Create/update the menus of every non-KFC store."""
+    from seed_menus import seed_menus
+
+    count = seed_menus(app.config["DATABASE"])
+    print(f"Seeded {count} menu variants.")
+
 
 @app.cli.command("check-kfc-images")
 def check_kfc_images_command():
-    """Report active menu items without a local image file."""
+    """Report active KFC menu items without a local image file."""
+    _check_images(store="KFC")
+
+
+@app.cli.command("check-images")
+@click.option("--store", default=None, help="Limit the check to one store name.")
+def check_images_command(store):
+    """Report active menu items (all stores) without a local image file."""
+    _check_images(store=store)
+
+
+def _check_images(store=None):
     db = get_db()
     rows = db.execute("""
         SELECT mi.id, mi.category, mi.name, mi.variant, mi.image_filename,
                m.name AS merchant_name
         FROM menu_items mi JOIN merchants m ON m.id=mi.merchant_id
-        WHERE mi.is_active=1 ORDER BY m.name, mi.category, mi.name, mi.id
-    """).fetchall()
+        WHERE mi.is_active=1 AND (? IS NULL OR m.name = ?)
+        ORDER BY m.name, mi.category, mi.name, mi.id
+    """, (store, store)).fetchall()
     missing = []
     for row in rows:
         image_path = menu_image_path(row["image_filename"])
@@ -550,31 +588,46 @@ def index():
     """Store grid with data attributes the client-side search and filter read."""
     db = get_db()
     merchants = db.execute("""
+        WITH menu AS (
+            SELECT merchant_id,
+                   COUNT(DISTINCT name) AS item_count,
+                   MIN(price_ugx) AS min_price,
+                   MAX(price_ugx) AS max_price,
+                   REPLACE(GROUP_CONCAT(DISTINCT name), ',', '|') AS titles
+            FROM menu_items WHERE is_active=1 GROUP BY merchant_id
+        ),
+        packs AS (
+            SELECT merchant_id, COUNT(*) AS item_count, MIN(monetary_value) AS min_price,
+                   MAX(monetary_value) AS max_price, GROUP_CONCAT(title, '|') AS titles
+            FROM products GROUP BY merchant_id
+        )
         SELECT m.*,
-               CASE WHEN m.name = 'KFC' THEN
-                   (SELECT COUNT(DISTINCT mi.name) FROM menu_items mi
-                    WHERE mi.merchant_id=m.id AND mi.is_active=1)
-               ELSE COUNT(p.id) END AS product_count,
-               CASE WHEN m.name = 'KFC' THEN
-                   (SELECT MIN(mi.price_ugx) FROM menu_items mi
-                    WHERE mi.merchant_id=m.id AND mi.is_active=1)
-               ELSE MIN(p.monetary_value) END AS min_price,
-               CASE WHEN m.name = 'KFC' THEN
-                   (SELECT MAX(mi.price_ugx) FROM menu_items mi
-                    WHERE mi.merchant_id=m.id AND mi.is_active=1)
-               ELSE MAX(p.monetary_value) END AS max_price,
-               CASE WHEN m.name = 'KFC' THEN
-                   (SELECT REPLACE(GROUP_CONCAT(DISTINCT mi.name), ',', '|')
-                    FROM menu_items mi WHERE mi.merchant_id=m.id AND mi.is_active=1)
-               ELSE GROUP_CONCAT(p.title, '|') END AS product_titles
+               COALESCE(menu.item_count, packs.item_count, 0) AS product_count,
+               COALESCE(menu.min_price, packs.min_price) AS min_price,
+               COALESCE(menu.max_price, packs.max_price) AS max_price,
+               COALESCE(menu.titles, packs.titles) AS product_titles
         FROM merchants m
-        LEFT JOIN products p ON p.merchant_id = m.id AND m.name != 'KFC'
-        GROUP BY m.id ORDER BY m.id
+        LEFT JOIN menu ON menu.merchant_id = m.id
+        LEFT JOIN packs ON packs.merchant_id = m.id
+        ORDER BY m.id
     """).fetchall()
     categories = {}
     for m in merchants:
         categories[m["category"]] = categories.get(m["category"], 0) + 1
-    return render_template("index.html", merchants=merchants, categories=list(categories.items()))
+    covers = {}
+    for row in db.execute(
+        "SELECT merchant_id, image_filename FROM menu_items "
+        "WHERE is_active=1 AND image_filename IS NOT NULL ORDER BY id"
+    ):
+        if row["merchant_id"] not in covers:
+            image = menu_item_image(row["image_filename"])
+            if image:
+                covers[row["merchant_id"]] = image
+    for m in merchants:
+        if m["image_url"]:
+            covers[m["id"]] = m["image_url"]
+    return render_template("index.html", merchants=merchants, covers=covers,
+                           categories=list(categories.items()))
 
 
 @app.route("/assets/images/<path:filename>")
@@ -589,14 +642,12 @@ def store_catalog(merchant_id):
     merchant = db.execute("SELECT * FROM merchants WHERE id = ?", (merchant_id,)).fetchone()
     if not merchant:
         abort(404)
-    if merchant["name"] == "KFC":
-        rows = db.execute(
-            "SELECT * FROM menu_items WHERE merchant_id=? AND is_active=1 "
-            "ORDER BY CASE category " +
-            " ".join(f"WHEN '{category}' THEN {position}" for position, category in enumerate(KFC_CATEGORIES)) +
-            " ELSE 99 END, name, id",
-            (merchant_id,),
-        ).fetchall()
+    profile = store_profile(merchant["name"])
+    rows = db.execute(
+        "SELECT * FROM menu_items WHERE merchant_id=? AND is_active=1 ORDER BY id",
+        (merchant_id,),
+    ).fetchall()
+    if rows:
         grouped = {}
         for row in rows:
             key = (row["category"], row["name"])
@@ -611,20 +662,28 @@ def store_catalog(merchant_id):
             variant = dict(row)
             variant["image"] = menu_item_image(row["image_filename"])
             grouped[key]["variants"].append(variant)
+        for item in grouped.values():
+            item["variants"].sort(key=lambda v: (v["price_ugx"], v["id"]))
+            item["from_price"] = item["variants"][0]["price_ugx"]
+        order = profile["sections"] + sorted(
+            {row["category"] for row in rows} - set(profile["sections"])
+        )
         categories = []
-        for category in KFC_CATEGORIES:
+        for category in order:
             items = [item for item in grouped.values() if item["category"] == category]
             if items:
                 slug = re.sub(r"[^a-z0-9]+", "-", category.lower()).strip("-")
                 categories.append({"name": category, "slug": slug, "items": items})
+        cover = next((item["image"] for item in grouped.values() if item["image"]), None)
         return render_template("store.html", merchant=merchant, products=[],
-                               menu_categories=categories,
+                               menu_categories=categories, profile=profile, cover=cover,
                                menu_item_count=sum(len(category["items"]) for category in categories))
     products = db.execute(
         "SELECT * FROM products WHERE merchant_id = ? ORDER BY monetary_value", (merchant_id,)
     ).fetchall()
     return render_template("store.html", merchant=merchant, products=products,
-                           menu_categories=[], menu_item_count=0,
+                           menu_categories=[], menu_item_count=0, profile=profile,
+                           cover=merchant["image_url"],
                            price_notice=(SWEET_CRUMBS_PRICE_NOTICE
                                          if merchant["name"] == "Sweet Crumbs Bakery" else None))
 
@@ -799,6 +858,24 @@ def recommend_gifts(db, query, budget=None, limit=10, mode=None):
 
 # Older name kept for callers written when KFC was the only menu merchant.
 recommend_menu_items = recommend_gifts
+
+
+@app.route("/credits")
+def photo_credits():
+    """Photographer credits for stock photos downloaded by fetch_images.py."""
+    import json
+
+    credits_file = BASE_DIR / "static" / "img" / "credits.json"
+    try:
+        credits = json.loads(credits_file.read_text()) if credits_file.is_file() else {}
+    except ValueError:
+        credits = {}
+    rows = sorted(
+        ({"file": path, **info} for path, info in credits.items()
+         if menu_item_image(path)),
+        key=lambda row: (row.get("store", ""), row["file"]),
+    )
+    return render_template("credits.html", credits=rows)
 
 
 @app.route("/recommend")

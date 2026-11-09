@@ -76,7 +76,7 @@
              data-search="{{ (m.name ~ ' ' ~ m.category ~ ' ' ~ (m.description or '') ~ ' ' ~ (m.product_titles or ''))|lower|replace('|', ' ') }}"
              data-products="{{ m.product_titles or '' }}">
             <article class="store-card">
-                {{ media(m.image_url, m.icon, m.accent, m.name) }}
+                {{ media(covers.get(m.id), m.icon, m.accent, m.name) }}
                 <span class="store-card__cat">{{ m.category }}</span>
                 <div class="store-card__body">
                     <h3 class="store-card__name">
