@@ -38,7 +38,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 import click
-from flask import (Flask, abort, flash, g, jsonify, redirect, render_template,
+from flask import (Flask, abort, flash, g, jsonify, redirect, render_template, send_file,
                    request, send_from_directory, session, url_for)
 from markupsafe import Markup, escape
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -858,6 +858,79 @@ def recommend_gifts(db, query, budget=None, limit=10, mode=None):
 
 # Older name kept for callers written when KFC was the only menu merchant.
 recommend_menu_items = recommend_gifts
+
+
+def _read_markdown_table(path):
+    """Rows of the first markdown table in a results file, plus the other text lines."""
+    rows, notes, header = [], [], None
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return [], []
+    for line in lines:
+        line = line.strip()
+        if line.startswith("|"):
+            cells = [c.strip() for c in line.strip("|").split("|")]
+            if set("".join(cells)) <= set("-: "):
+                continue
+            if header is None:
+                header = cells
+            else:
+                rows.append(dict(zip(header, cells)))
+        elif line:
+            notes.append(line.lstrip("- "))
+    return rows, notes
+
+
+@app.route("/ai")
+def how_ai_works():
+    """Explains the two ML components and shows their offline evaluation results."""
+    ml_dir = BASE_DIR / "ml"
+    rec_rows, rec_notes = _read_markdown_table(ml_dir / "eval" / "results.md")
+    fraud_rows, fraud_notes = _read_markdown_table(ml_dir / "fraud" / "results.md")
+    for row in rec_rows:
+        try:
+            row["ndcg"] = float(row.get("NDCG@5", "0"))
+        except ValueError:
+            row["ndcg"] = 0.0
+    best = max(rec_rows, key=lambda r: r["ndcg"], default=None)
+
+    status = ml_status().removeprefix("[ml] ")
+    recommender_status, _, fraud_status = status.partition("; fraud check: ")
+    recommender_status = recommender_status.removeprefix("recommender mode: ")
+
+    if recommender_status.startswith("builtin"):
+        running_model = None
+    elif recommender_status.startswith("hybrid"):
+        running_model = "hybrid tfidf+lsa" if "LSA used" in recommender_status else "hybrid tfidf+embeddings"
+    else:
+        running_model = {"tfidf": "tfidf (baseline)", "lsa": "lsa", "embed": "embeddings"}.get(
+            recommender_status.split(" ")[0])
+
+    db = get_db()
+    live = db.execute("""
+        SELECT COUNT(*) AS checked, COALESCE(SUM(risk_flag), 0) AS flagged
+        FROM audit_log WHERE risk_flag IS NOT NULL
+    """).fetchone()
+    try:
+        query_count = sum(1 for _ in (ml_dir / "eval" / "gift_queries.csv").open(encoding="utf-8")) - 1
+    except OSError:
+        query_count = None
+    return render_template(
+        "ai.html", rec_rows=rec_rows, rec_notes=rec_notes, best=best,
+        fraud_rows=fraud_rows, fraud_notes=fraud_notes, running_model=running_model,
+        recommender_status=recommender_status, fraud_status=fraud_status,
+        live=live, catalogue_size=len(gift_catalogue(db)), query_count=query_count,
+        has_confusion=(ml_dir / "fraud" / "confusion.png").is_file(),
+    )
+
+
+@app.route("/ai/confusion.png")
+def fraud_confusion_image():
+    path = BASE_DIR / "ml" / "fraud" / "confusion.png"
+    if not path.is_file():
+        abort(404)
+    return send_file(path, mimetype="image/png")
 
 
 @app.route("/credits")

@@ -31,6 +31,42 @@
     </div>
 </section>
 
+<section class="finder" id="giftFinder" aria-labelledby="finderHeading">
+    <div class="container">
+        <div class="section-heading section-heading--center">
+            <p class="sg-label"><i class="bi bi-stars me-1" aria-hidden="true"></i>AI gift finder</p>
+            <h2 class="h2" id="finderHeading">Not Sure What to Get?</h2>
+            <p class="text-muted mb-0">Describe the person or the occasion in your own words. The AI suggests gifts from every store, within your budget.</p>
+        </div>
+
+        <form class="finder__form" id="finderForm" autocomplete="off" novalidate>
+            <label for="finderInput" class="visually-hidden">Describe who the gift is for</label>
+            <i class="bi bi-chat-heart finder__icon" aria-hidden="true"></i>
+            <input id="finderInput" type="text" class="finder__input" maxlength="200"
+                   placeholder="e.g. birthday gift for my mum under 50k" enterkeyhint="search">
+            <button class="btn btn-primary finder__go" type="submit">
+                <span class="finder__go-text">Find gifts</span>
+                <span class="spinner-border spinner-border-sm" aria-hidden="true" hidden></span>
+            </button>
+        </form>
+
+        <div class="finder__examples" aria-label="Example requests">
+            <span>Try:</span>
+            <button type="button" class="chip" data-finder-q="birthday gift for my mum under 50k">Birthday gift for my mum under 50k</button>
+            <button type="button" class="chip" data-finder-q="coffee date for two">Coffee date for two</button>
+            <button type="button" class="chip" data-finder-q="something for a student under 30k">Something for a student under 30k</button>
+            <button type="button" class="chip" data-finder-q="get well soon">Get well soon</button>
+            <button type="button" class="chip" data-finder-q="party food for friends">Party food for friends</button>
+        </div>
+
+        <p class="finder__status" id="finderStatus" aria-live="polite"></p>
+        <div class="row g-3 g-lg-4" id="finderResults"></div>
+        <p class="finder__about">
+            Ranked by a hybrid TF-IDF and LSA model. <a href="{{ url_for('how_ai_works') }}">See how the AI works</a>
+        </p>
+    </div>
+</section>
+
 <div class="filterbar" id="filterbar">
     <div class="container">
         <div class="chips" role="group" aria-label="Filter stores by category">

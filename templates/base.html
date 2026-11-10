@@ -38,6 +38,11 @@
                            href="{{ url_for('index') }}"><i class="bi bi-shop"></i> Gift marketplace</a>
                     </li>
                     <li class="nav-item">
+                        <a class="sg-link {% if request.endpoint == 'how_ai_works' %}is-active{% endif %}"
+                           {% if request.endpoint == 'how_ai_works' %}aria-current="page"{% endif %}
+                           href="{{ url_for('how_ai_works') }}"><i class="bi bi-cpu"></i> How the AI works</a>
+                    </li>
+                    <li class="nav-item">
                         <a class="sg-link {% if request.endpoint == 'merchant_verify' %}is-active{% endif %}"
                            {% if request.endpoint == 'merchant_verify' %}aria-current="page"{% endif %}
                            href="{{ url_for('merchant_verify') }}"><i class="bi bi-upc-scan"></i> Cashier portal
@@ -79,6 +84,7 @@
             <p class="sg-footer__slogan">Send a gift. Make their day.</p>
             <nav class="sg-footer__links" aria-label="Footer navigation">
                 <a href="{{ url_for('index') }}">Marketplace</a>
+                <a href="{{ url_for('how_ai_works') }}">How the AI works</a>
                 <a href="{{ url_for('merchant_verify') }}">Cashier portal</a>
                 <a href="{{ url_for('photo_credits') }}">Photo credits</a>
             </nav>

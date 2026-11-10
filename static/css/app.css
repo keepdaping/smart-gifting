@@ -3237,3 +3237,353 @@ h1, h2, h3, h4, h5,
 .hero__cta {
     margin-top: 2rem;
 }
+
+
+/* AI gift finder ------------------------------------------------------ */
+.finder {
+    padding: clamp(3.5rem, 7vw, 5rem) 0;
+    background: #fff;
+}
+
+.finder__form {
+    position: relative;
+    display: flex;
+    gap: .5rem;
+    max-width: 720px;
+    margin: 0 auto;
+    padding: .45rem;
+    background: #fff;
+    border: 2px solid var(--sg-primary);
+    border-radius: var(--sg-radius);
+    box-shadow: 0 10px 30px rgb(22 132 91 / 12%);
+}
+
+.finder__icon {
+    position: absolute;
+    top: 50%;
+    left: 1.1rem;
+    color: var(--sg-primary);
+    font-size: 1.25rem;
+    transform: translateY(-50%);
+}
+
+.finder__input {
+    flex: 1;
+    min-width: 0;
+    padding: .7rem .75rem .7rem 2.6rem;
+    color: var(--sg-dark);
+    background: transparent;
+    border: 0;
+    font-size: 1.05rem;
+}
+
+.finder__input:focus {
+    outline: none;
+}
+
+.finder__form:focus-within {
+    box-shadow: 0 0 0 4px rgb(22 132 91 / 15%), 0 10px 30px rgb(22 132 91 / 12%);
+}
+
+.finder__go {
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    padding-inline: 1.4rem;
+    white-space: nowrap;
+}
+
+.finder__examples {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: .5rem;
+    max-width: 860px;
+    margin: 1.1rem auto 0;
+    color: var(--sg-muted);
+    font-size: .9rem;
+    font-weight: 600;
+}
+
+.finder__examples .chip {
+    font-size: .85rem;
+}
+
+.finder__status {
+    min-height: 1.5rem;
+    margin: 1.75rem 0 1.25rem;
+    color: var(--sg-primary-dark);
+    font-weight: 700;
+    text-align: center;
+}
+
+.finder__status:empty {
+    margin: .75rem 0 0;
+}
+
+.finder__about {
+    margin: 1.75rem 0 0;
+    color: var(--sg-muted);
+    font-size: .88rem;
+    text-align: center;
+}
+
+.finder__about a {
+    font-weight: 700;
+}
+
+.finder-card__store {
+    margin-bottom: .2rem;
+    color: var(--sg-primary);
+    font-size: .8rem;
+    font-weight: 700;
+}
+
+.finder-card .media-tile__fallback i {
+    color: var(--sg-primary);
+}
+
+#finderResults .col-12 {
+    animation: sg-rise .4s ease both;
+}
+
+@media (max-width: 575.98px) {
+    .finder__form {
+        flex-direction: column;
+    }
+
+    .finder__icon {
+        top: 1.55rem;
+    }
+
+    .finder__go {
+        justify-content: center;
+    }
+}
+
+/* How the AI works page ------------------------------------------------ */
+.ai-status__card {
+    display: flex;
+    gap: 1rem;
+    height: 100%;
+    padding: 1.5rem;
+    background: #fff;
+    border: 1px solid var(--sg-line);
+    border-radius: var(--sg-radius);
+}
+
+.ai-status__icon {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 3rem;
+    height: 3rem;
+    color: var(--sg-primary);
+    background: #e8f5ed;
+    border-radius: 50%;
+    font-size: 1.3rem;
+}
+
+.ai-steps {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1.25rem;
+    margin: 0 0 2.5rem;
+    padding: 0;
+    list-style: none;
+    counter-reset: step;
+}
+
+.ai-steps li {
+    position: relative;
+    padding: 1.6rem 1.4rem 1.4rem;
+    background: var(--sg-soft);
+    border-radius: var(--sg-radius);
+    counter-increment: step;
+}
+
+.ai-steps li::before {
+    display: grid;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    margin-bottom: .8rem;
+    content: counter(step);
+    color: #fff;
+    background: var(--sg-primary);
+    border-radius: 50%;
+    font-weight: 800;
+}
+
+.ai-steps strong {
+    display: block;
+    margin-bottom: .35rem;
+    font-size: 1.05rem;
+}
+
+.ai-steps p {
+    margin: 0;
+    color: var(--sg-muted);
+    font-size: .92rem;
+}
+
+.ai-panel {
+    padding: clamp(1.4rem, 3vw, 2rem);
+    background: #fff;
+    border: 1px solid var(--sg-line);
+    border-radius: var(--sg-radius);
+}
+
+.ai-table th,
+.ai-table td {
+    padding-block: .8rem;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.ai-table thead th {
+    color: var(--sg-muted);
+    font-size: .82rem;
+    font-weight: 700;
+}
+
+.ai-table tr.is-best > * {
+    background: #f0f9f4;
+}
+
+.ai-bar {
+    display: inline-block;
+    width: calc(100% - 3.5rem);
+    height: .6rem;
+    margin-right: .5rem;
+    overflow: hidden;
+    vertical-align: middle;
+    background: #edf3ef;
+    border-radius: 999px;
+}
+
+.ai-bar span {
+    display: block;
+    height: 100%;
+    background: var(--sg-primary);
+    border-radius: 999px;
+}
+
+.ai-bar__n {
+    font-weight: 700;
+}
+
+.ai-defs {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: .75rem 2rem;
+    margin: 1.25rem 0 0;
+}
+
+.ai-defs dt {
+    font-size: .9rem;
+}
+
+.ai-defs dd {
+    margin: 0;
+    color: var(--sg-muted);
+    font-size: .9rem;
+}
+
+.ai-notes {
+    margin-top: 1.25rem;
+    color: var(--sg-muted);
+}
+
+.ai-notes summary {
+    color: var(--sg-primary);
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.ai-signals {
+    display: grid;
+    gap: .7rem;
+    margin: 0 0 1.25rem;
+    padding: 0;
+    list-style: none;
+}
+
+.ai-signals i {
+    width: 1.5rem;
+    color: var(--sg-primary);
+}
+
+.ai-caveat {
+    margin: 1rem 0;
+    padding: .75rem 1rem;
+    color: #6b5420;
+    background: #fbf3e2;
+    border-radius: var(--sg-radius-sm);
+}
+
+.ai-confusion {
+    display: block;
+    width: 100%;
+    max-width: 560px;
+    height: auto;
+    margin: 1rem auto 0;
+    border-radius: var(--sg-radius-sm);
+}
+
+@media (max-width: 991.98px) {
+    .ai-steps {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 575.98px) {
+    .ai-steps,
+    .ai-defs {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #finderResults .col-12 {
+        animation: none;
+    }
+}
+
+/* Photo tiles built by the gift finder script (the Jinja macro sets these inline) */
+.finder-card .media-tile {
+    position: relative;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    aspect-ratio: 4 / 3;
+}
+
+.finder-card .media-tile img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.ai-running {
+    display: inline-block;
+    margin-left: .35rem;
+    padding: .15rem .55rem;
+    color: #fff;
+    background: var(--sg-primary);
+    border-radius: 999px;
+    font-size: .72rem;
+    font-weight: 700;
+}
+
+.finder-card .product-card__foot {
+    gap: .5rem;
+}
+
+.finder-card .product-card__foot .btn,
+.finder-card .menu-price {
+    white-space: nowrap;
+}

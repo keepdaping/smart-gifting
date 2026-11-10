@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+{% block title %}How the AI works{% endblock %}
+
+{% block content %}
+<section class="page-hero">
+    <div class="container">
+        <span class="page-hero__mark" style="--accent:#16845B;"><i class="bi bi-cpu" aria-hidden="true"></i></span>
+        <p class="sg-label">Machine learning</p>
+        <h1 class="page-hero__title">How the AI Works</h1>
+        <p class="page-hero__lead">Smart Gifting uses two machine-learning components: a recommender that
+            understands what you type, and a fraud check that watches every redemption at the till.</p>
+    </div>
+</section>
+
+<section class="container py-5">
+    <div class="row g-3 g-lg-4 ai-status">
+        <div class="col-md-6">
+            <div class="ai-status__card">
+                <span class="ai-status__icon"><i class="bi bi-stars" aria-hidden="true"></i></span>
+                <div>
+                    <h2 class="h6 mb-1">Gift recommender</h2>
+                    <p class="mb-1">Running: <strong>{{ recommender_status }}</strong></p>
+                    <p class="small text-muted mb-0">Searching {{ catalogue_size }} gifts from every store.</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="ai-status__card">
+                <span class="ai-status__icon"><i class="bi bi-shield-check" aria-hidden="true"></i></span>
+                <div>
+                    <h2 class="h6 mb-1">Fraud check</h2>
+                    <p class="mb-1">Running: <strong>{{ fraud_status }}</strong></p>
+                    <p class="small text-muted mb-0">{{ live.checked }} redemption{{ '' if live.checked == 1 else 's' }} scored so far,
+                        {{ live.flagged }} flagged as unusual.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="container pb-5" aria-labelledby="rec-heading">
+    <div class="section-heading section-heading--center">
+        <p class="sg-label">Component 1</p>
+        <h2 class="h2" id="rec-heading">Gift Recommender</h2>
+        <p class="text-muted mb-0">Type a person or an occasion in plain words and get matching gifts from every store.</p>
+    </div>
+
+    <ol class="ai-steps">
+        <li>
+            <strong>Read the request</strong>
+            <p>“birthday gift for my mum under 50k” is cleaned into words, and the budget (UGX 50,000) is picked out.</p>
+        </li>
+        <li>
+            <strong>Match by words (TF-IDF)</strong>
+            <p>Each gift's name, description and tags are scored for the words you typed, weighting rare words higher.</p>
+        </li>
+        <li>
+            <strong>Match by meaning (LSA)</strong>
+            <p>Latent Semantic Analysis links related words, so “sweet treat” can find ice cream even without the word “sweet”.</p>
+        </li>
+        <li>
+            <strong>Rank within budget</strong>
+            <p>The two scores are blended (the hybrid model) and gifts over the budget are removed.</p>
+        </li>
+    </ol>
+
+    {% if rec_rows %}
+    <div class="ai-panel">
+        <h3 class="h5">How well it works</h3>
+        <p class="text-muted">Tested offline on {{ query_count or rec_rows[0]['Queries'] }} hand-labelled gift requests,
+            each with the menu items a person would expect to see. Higher is better.</p>
+        <div class="table-responsive">
+            <table class="table align-middle ai-table">
+                <thead>
+                    <tr><th scope="col">Model</th><th scope="col">Precision@5</th><th scope="col">Recall@5</th>
+                        <th scope="col">MRR</th><th scope="col" class="w-50">NDCG@5</th></tr>
+                </thead>
+                <tbody>
+                {% for row in rec_rows %}
+                <tr class="{{ 'is-best' if best and row.Model == best.Model }}">
+                    <th scope="row">{{ row.Model }}{% if best and row.Model == best.Model %} <span class="card-tag d-inline-block w-auto m-0 ms-1">Best</span>{% endif %}{% if row.Model == running_model %} <span class="ai-running">Running in this app</span>{% endif %}</th>
+                    <td>{{ row['Precision@5'] }}</td>
+                    <td>{{ row['Recall@5'] }}</td>
+                    <td>{{ row.MRR }}</td>
+                    <td>
+                        <div class="ai-bar" role="img" aria-label="NDCG@5 {{ row['NDCG@5'] }}">
+                            <span style="width: {{ (row.ndcg * 100)|round(1) }}%;"></span>
+                        </div>
+                        <span class="ai-bar__n">{{ row['NDCG@5'] }}</span>
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <dl class="ai-defs">
+            <div><dt>Precision@5</dt><dd>Of the top 5 suggestions, the share that were right.</dd></div>
+            <div><dt>Recall@5</dt><dd>Of all the right gifts, the share that made the top 5.</dd></div>
+            <div><dt>MRR</dt><dd>How high the first right gift appears (1.0 means always first).</dd></div>
+            <div><dt>NDCG@5</dt><dd>Overall ranking quality, rewarding right gifts placed near the top.</dd></div>
+        </dl>
+        {% if rec_notes %}
+        <details class="ai-notes">
+            <summary>Significance test against the TF-IDF baseline</summary>
+            <ul class="small mb-0">
+                {% for note in rec_notes %}<li>{{ note }}</li>{% endfor %}
+            </ul>
+        </details>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <p class="text-center mt-4 mb-0">
+        <a class="btn btn-primary" href="{{ url_for('index') }}#giftFinder"><i class="bi bi-stars me-1" aria-hidden="true"></i> Try the Gift finder</a>
+    </p>
+</section>
+
+<section class="how" aria-labelledby="fraud-heading">
+    <div class="container">
+        <div class="section-heading section-heading--center">
+            <p class="sg-label">Component 2</p>
+            <h2 class="h2" id="fraud-heading">Fraud Check at the Till</h2>
+            <p class="text-muted mb-0">Every time a cashier redeems a voucher, an Isolation Forest model scores how unusual
+                the redemption looks and warns the cashier when it stands out.</p>
+        </div>
+
+        <div class="row g-3 g-lg-4">
+            <div class="col-lg-5">
+                <div class="ai-panel h-100">
+                    <h3 class="h5">What it looks at</h3>
+                    <ul class="ai-signals">
+                        <li><i class="bi bi-clock-history" aria-hidden="true"></i> How soon after purchase it is redeemed</li>
+                        <li><i class="bi bi-phone" aria-hidden="true"></i> Redemptions from the same device in the last hour</li>
+                        <li><i class="bi bi-person" aria-hidden="true"></i> Vouchers the same buyer bought in 24 hours</li>
+                        <li><i class="bi bi-x-octagon" aria-hidden="true"></i> Wrong codes tried before this one</li>
+                        <li><i class="bi bi-moon-stars" aria-hidden="true"></i> Time of day</li>
+                        <li><i class="bi bi-cash-coin" aria-hidden="true"></i> Amount, compared with what that store usually sells</li>
+                    </ul>
+                    <p class="small text-muted mb-0">Isolation Forest learns what normal redemptions look like and flags the ones that are easy
+                        to isolate from the rest. Unlike fixed rules, it catches combinations of signals that are each only slightly odd.</p>
+                </div>
+            </div>
+            <div class="col-lg-7">
+                <div class="ai-panel h-100">
+                    <h3 class="h5">Fixed rules vs Isolation Forest</h3>
+                    {% if fraud_rows %}
+                    <div class="table-responsive">
+                        <table class="table align-middle ai-table">
+                            <thead><tr>{% for key in fraud_rows[0].keys() %}<th scope="col">{{ key }}</th>{% endfor %}</tr></thead>
+                            <tbody>
+                            {% for row in fraud_rows %}
+                            <tr class="{{ 'is-best' if 'Isolation' in row.Detector }}">
+                                {% for value in row.values() %}{% if loop.first %}<th scope="row">{{ value }}</th>{% else %}<td>{{ value }}</td>{% endif %}{% endfor %}
+                            </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% endif %}
+                    {% for note in fraud_notes %}
+                    {% if note.startswith('NOTE') %}{% set text = note.removeprefix('NOTE: ') %}<p class="small ai-caveat"><i class="bi bi-info-circle me-1" aria-hidden="true"></i>{{ text[:1]|upper }}{{ text[1:] }}</p>{% else %}<p class="small mb-1">{{ note }}</p>{% endif %}
+                    {% endfor %}
+                    {% if has_confusion %}
+                    <img class="ai-confusion" src="{{ url_for('fraud_confusion_image') }}"
+                         alt="Confusion matrices for the fixed rules and the Isolation Forest on the test set" loading="lazy">
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}

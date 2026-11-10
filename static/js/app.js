@@ -384,3 +384,130 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     });
 });
+
+
+/* AI gift finder: sends the request to /recommend and shows the ranked gifts. */
+(() => {
+    const form = document.getElementById("finderForm");
+    if (!form) {
+        return;
+    }
+    const input = document.getElementById("finderInput");
+    const status = document.getElementById("finderStatus");
+    const results = document.getElementById("finderResults");
+    const button = form.querySelector(".finder__go");
+    const spinner = button.querySelector(".spinner-border");
+    const ugx = (n) => `UGX ${Number(n).toLocaleString("en-US")}`;
+    let lastRequest = 0;
+
+    const el = (tag, className, text) => {
+        const node = document.createElement(tag);
+        if (className) {
+            node.className = className;
+        }
+        if (text !== undefined) {
+            node.textContent = text;
+        }
+        return node;
+    };
+
+    const card = (rec) => {
+        const col = el("div", "col-12 col-sm-6 col-lg-3");
+        const article = el("article", "product-card finder-card");
+        const media = el("div", "media-tile media-tile--menu");
+        media.setAttribute("role", "img");
+        media.setAttribute("aria-label", rec.item.name);
+        const fallback = el("span", "media-tile__fallback");
+        fallback.setAttribute("aria-hidden", "true");
+        fallback.append(el("i", "bi bi-gift"), el("span", "", rec.item.name));
+        media.append(fallback);
+        if (rec.image) {
+            const img = el("img");
+            img.src = rec.image;
+            img.alt = "";
+            img.loading = "lazy";
+            img.addEventListener("error", () => img.remove());
+            media.append(img);
+        }
+
+        const body = el("div", "product-card__body");
+        body.append(el("p", "finder-card__store", rec.merchant.name));
+        const title = rec.item.variant ? `${rec.item.name} (${rec.item.variant})` : rec.item.name;
+        body.append(el("h3", "product-card__title", title));
+        if (rec.item.description) {
+            body.append(el("p", "product-card__desc", rec.item.description));
+        }
+        const foot = el("div", "product-card__foot");
+        const price = el("span", "price");
+        price.append(el("span", "menu-price", ugx(rec.price)));
+        const link = el("a", "btn btn-primary btn-sm px-3");
+        link.href = rec.buy_url;
+        link.append(el("i", "bi bi-gift me-1"), document.createTextNode("Gift this"));
+        foot.append(price, link);
+        body.append(foot);
+        article.append(media, body);
+        col.append(article);
+        return col;
+    };
+
+    const setBusy = (busy) => {
+        button.disabled = busy;
+        spinner.hidden = !busy;
+        results.setAttribute("aria-busy", busy ? "true" : "false");
+    };
+
+    const run = async (query) => {
+        query = query.trim();
+        if (!query) {
+            status.textContent = "Describe who the gift is for, for example “coffee for a friend”.";
+            input.focus();
+            return;
+        }
+        const requestId = ++lastRequest;
+        setBusy(true);
+        status.textContent = "Finding gifts…";
+        try {
+            const response = await fetch(`/recommend?q=${encodeURIComponent(query)}`, {
+                headers: { Accept: "application/json" },
+            });
+            const data = await response.json();
+            if (requestId !== lastRequest) {
+                return;
+            }
+            results.replaceChildren();
+            if (!response.ok) {
+                status.textContent = data.error || "The gift finder could not read that request. Try different words.";
+                return;
+            }
+            const recs = (data.recommendations || []).slice(0, 8);
+            if (!recs.length) {
+                status.textContent = `No gifts matched “${query}”${data.budget ? ` within ${ugx(data.budget)}` : ""}. ` +
+                    "Try naming a person, an occasion or an item, like “cake for a birthday”.";
+                return;
+            }
+            const stores = new Set(recs.map((r) => r.merchant.name)).size;
+            status.textContent = `${recs.length} gift${recs.length === 1 ? "" : "s"} from ${stores} store${stores === 1 ? "" : "s"}` +
+                (data.budget ? `, all within ${ugx(data.budget)}.` : ".");
+            recs.forEach((rec) => results.append(card(rec)));
+        } catch (error) {
+            if (requestId === lastRequest) {
+                status.textContent = "The gift finder is not responding. Check that the app is running, then try again.";
+            }
+        } finally {
+            if (requestId === lastRequest) {
+                setBusy(false);
+            }
+        }
+    };
+
+    form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        run(input.value);
+    });
+    document.querySelectorAll("[data-finder-q]").forEach((chip) => {
+        chip.addEventListener("click", () => {
+            input.value = chip.dataset.finderQ;
+            run(input.value);
+        });
+    });
+})();
