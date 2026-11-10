@@ -302,7 +302,7 @@ IMAGE_QUERIES = {
         "style-voucher": "fashion boutique clothes rack",
     },
     "pearl-supermarket": {
-        "breakfast-hamper": "breakfast gift hamper", "festive-hamper": "christmas food hamper",
+        "breakfast-hamper": "gift basket food", "festive-hamper": "christmas food hamper",
         "baby-hamper": "baby gift basket", "rice-sugar": "rice bag grocery",
         "cooking-essentials": "cooking oil spices groceries", "snack-box": "snacks crisps biscuits",
         "cleaning": "cleaning supplies", "shopping-voucher": "supermarket shopping basket",
@@ -323,7 +323,7 @@ IMAGE_QUERIES = {
     "kampala-coffee": {
         "pour-over": "pour over coffee", "flat-white": "flat white coffee",
         "african-tea": "milk tea cup", "iced-coffee": "iced coffee",
-        "rolex": "rolex uganda chapati egg", "samosa": "samosas plate",
+        "rolex": "rolex uganda chapati egg", "samosa": "samosa",
         "banana-bread": "banana bread slice", "coffee-for-two": "two coffees",
         "coffee-beans": "coffee beans bag", "tasting-set": "coffee tasting cups",
     },
