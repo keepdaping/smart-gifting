@@ -366,6 +366,35 @@ def bootstrap(path=None):
     seed_menus(path)
 
 
+def warm_up_recommender(path=None):
+    """Load the recommender in the background so the first gift search is instant."""
+    if os.environ.get("RECOMMENDER_WARMUP", "1") == "0" or RECOMMENDER_MODE not in ("embed", "hybrid"):
+        return
+    try:
+        from ml.service import warm_up
+    except ImportError:
+        return
+    db = connect(path)
+    try:
+        rows = gift_catalogue(db)
+    finally:
+        db.close()
+    if rows:
+        warm_up(rows, RECOMMENDER_MODE)
+
+
+@app.cli.command("download-model")
+def download_model_command():
+    """Download the sentence-transformers model once (needs internet)."""
+    from ml.catalog import items_from_dicts
+    from ml.recommenders import EmbeddingRecommender
+
+    rows = gift_catalogue(get_db())
+    print("Downloading the embedding model and encoding the catalogue (one time)...")
+    EmbeddingRecommender(items_from_dicts(rows), local_only=False)
+    print("Done. Gift searches will now use the embedding model, even offline.")
+
+
 @app.cli.command("seed-kfc")
 def seed_kfc_command():
     """Create/update the KFC merchant menu."""
@@ -815,7 +844,7 @@ def _ml_rank(rows, query, budget=None, limit=10, mode="hybrid"):
     except ImportError:
         return None
     by_key = {(row["kind"], row["id"]): row for row in rows}
-    results = rank(query, rows=rows, budget=budget, k=limit, mode=mode)
+    results = rank(query, rows=rows, budget=budget, k=limit, mode=mode, wait=False)
     return [(by_key[(item["kind"], item["id"])], item["score"])
             for item in results if item["score"] > 0]
 
@@ -1461,6 +1490,7 @@ def ml_status():
 
 
 bootstrap()
+warm_up_recommender()
 print(ml_status(), flush=True)
 
 if __name__ == "__main__":

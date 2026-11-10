@@ -469,6 +469,7 @@ document.addEventListener("DOMContentLoaded", () => {
         try {
             const response = await fetch(`/recommend?q=${encodeURIComponent(query)}`, {
                 headers: { Accept: "application/json" },
+                signal: AbortSignal.timeout ? AbortSignal.timeout(20000) : undefined,
             });
             const data = await response.json();
             if (requestId !== lastRequest) {
@@ -491,7 +492,9 @@ document.addEventListener("DOMContentLoaded", () => {
             recs.forEach((rec) => results.append(card(rec)));
         } catch (error) {
             if (requestId === lastRequest) {
-                status.textContent = "The gift finder is not responding. Check that the app is running, then try again.";
+                status.textContent = error && error.name === "TimeoutError"
+                    ? "The gift finder took too long to answer. Try again in a moment."
+                    : "The gift finder is not responding. Check that the app is running, then try again.";
             }
         } finally {
             if (requestId === lastRequest) {

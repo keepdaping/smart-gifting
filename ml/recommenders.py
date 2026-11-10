@@ -80,14 +80,31 @@ class LsaRecommender(BaseRecommender):
         return (self.Z @ q.T).ravel()
 
 
+def load_sentence_model(model, local_only=False):
+    """Load a sentence-transformers model.
+
+    local_only=True never touches the internet: it uses the copy already downloaded
+    (``flask --app app download-model``) and raises if there is none. The web app uses
+    this so a slow or missing connection can never hold up a search.
+    """
+    from sentence_transformers import SentenceTransformer  # optional dependency
+    if not local_only:
+        return SentenceTransformer(model)
+    try:
+        return SentenceTransformer(model, local_files_only=True)
+    except TypeError:  # older sentence-transformers without local_files_only
+        os.environ["HF_HUB_OFFLINE"] = "1"
+        os.environ["TRANSFORMERS_OFFLINE"] = "1"
+        return SentenceTransformer(model)
+
+
 class EmbeddingRecommender(BaseRecommender):
     name = "embed"
 
     def __init__(self, items, model="sentence-transformers/all-MiniLM-L6-v2",
-                 cache_dir="ml"):
+                 cache_dir="ml", local_only=False):
         super().__init__(items)
-        from sentence_transformers import SentenceTransformer  # optional dependency
-        self.model = SentenceTransformer(model)
+        self.model = load_sentence_model(model, local_only)
         docs = [it["doc"] for it in items]
         # One cache file per catalogue content (not just its length), so a catalogue
         # with different items or merchants never reuses another's embeddings.
