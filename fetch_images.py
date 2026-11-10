@@ -52,7 +52,7 @@ KFC_QUERIES = {
     "streetwise-2": "two pieces fried chicken fries", "streetwise-3": "fried chicken meal with fries",
     "streetwise-5": "fried chicken pieces box", "streetwise-7": "fried chicken platter",
     "streetwise-9": "large fried chicken platter", "colonel-burger": "crispy chicken burger",
-    "tower-burger": "tall chicken burger hash brown", "twister": "chicken wrap tortilla",
+    "tower-burger": "double chicken burger", "twister": "chicken wrap tortilla",
     "box-master": "chicken wrap meal box", "fullyloaded-box": "fried chicken meal box fries",
     "chicken-lunch-box": "chicken lunch box", "crispy-strips": "crispy chicken tenders",
     "hot-wings-bucket": "bucket of chicken wings", "colonel-bucket": "fried chicken bucket meal",
