@@ -20,7 +20,6 @@
 
     <div class="checkout-heading mb-4">
         <div>
-            <span class="eyebrow eyebrow--muted">A thoughtful gift is almost ready</span>
             <h1 class="h2 mb-1">Send this gift</h1>
             <p class="text-muted mb-0">Add the details and choose your demo payment method.</p>
             {% if price_notice %}<p class="small text-warning-emphasis mt-2 mb-0">{{ price_notice }}</p>{% endif %}
@@ -95,7 +94,7 @@
 
         <div class="col-lg-5">
             <div class="sticky-lg-top" style="top: 5.5rem;">
-                <div class="preview-heading"><span class="eyebrow eyebrow--muted">The recipient experience</span><h2 class="h5 mb-0">Their gift, beautifully wrapped</h2></div>
+                <div class="preview-heading"><h2 class="h5 mb-0">What they will receive</h2></div>
                 <div class="ticket ticket--preview" id="preview">
                     <div class="ticket__top" style="--accent: {{ product.accent or '#12805C' }};">
                         <div class="ticket__value">{{ product.monetary_value|ugx }}</div>

@@ -7,9 +7,8 @@
     <div class="container">
         <div class="row align-items-center g-5">
             <div class="col-lg-7">
-                <span class="eyebrow"><i class="bi bi-stars me-2" aria-hidden="true"></i>Thoughtful gifting, made simple</span>
-                <h1 class="hero__title">Send a voucher.<br>They collect it at the till.</h1>
-                <p class="hero__lead">Choose a local favourite, add your message, and share a gift they can redeem in person.</p>
+                <h1 class="hero__title">A gift from you,<br>collected at their favourite shop.</h1>
+                <p class="hero__lead">Pick a treat from a Kampala store, add a personal note and send it by WhatsApp or SMS. They show the code at the till and collect it.</p>
 
                 <form class="search" role="search" id="searchForm" autocomplete="off" action="{{ url_for('index') }}" method="GET">
                     <label for="storeSearch" class="visually-hidden">Search stores and gifts</label>
@@ -27,17 +26,17 @@
                 </div>
             </div>
 
-            <div class="col-lg-5 d-none d-md-block">
+            <div class="col-lg-5">
                 <div class="ticket ticket--hero" aria-hidden="true">
-                    <div class="ticket__top" style="--accent:#C8102E;">
-                        <span class="ticket__tag">Sample voucher</span>
-                        <div class="ticket__value">UGX 35,000</div>
-                        <div class="ticket__item">Zinger Burger Feast</div>
-                        <div class="ticket__store"><i class="bi bi-egg-fried"></i> KFC Uganda</div>
+                    <div class="ticket__top" style="--accent:#5B3A29;">
+                        <div class="ticket__value">UGX 34,000</div>
+                        <div class="ticket__item">Coffee Date for Two</div>
+                        <div class="ticket__store"><i class="bi bi-cup-hot"></i> Java House</div>
                     </div>
                     <div class="ticket__tear"></div>
                     <div class="ticket__bottom">
-                        <div class="ticket__note">“Happy birthday, enjoy lunch on me!”</div>
+                        <div class="ticket__from">From <strong>Sarah</strong></div>
+                        <div class="ticket__note">“Happy birthday! Coffee and cake are on me.”</div>
                         <div class="ticket__code">GIFT-7KQM-4XPD</div>
                     </div>
                 </div>
@@ -63,9 +62,8 @@
 <section class="container py-4 py-lg-5">
     <div class="section-heading">
         <div>
-            <span class="eyebrow eyebrow--muted">Made for moments that matter</span>
             <h2 class="h2 mb-1">Find their kind of gift</h2>
-            <p class="text-muted mb-0">Explore stores and ready-to-send gift packages.</p>
+            <p class="text-muted mb-0">Coffee, cakes, gadgets and more, from stores across Kampala.</p>
         </div>
         <p class="text-muted small mb-0" id="resultCount" aria-live="polite">{{ merchants|length }} stores</p>
     </div>
@@ -111,8 +109,7 @@
 
 <section class="how">
     <div class="container">
-        <span class="eyebrow eyebrow--muted">A better way to say “I'm thinking of you”</span>
-        <h2 class="h2 mb-4">A lovely gift in three simple steps</h2>
+        <h2 class="h2 mb-4">How it works</h2>
         <ol class="how__steps">
             <li><span class="how__n">1</span><div><strong>Choose a gift</strong><p>Pick a package from a partner store. The value is fixed, so the recipient knows what they get.</p></div></li>
             <li><span class="how__n">2</span><div><strong>Send it</strong><p>Pay with Mobile Money, then share the voucher by WhatsApp or SMS with your message.</p></div></li>

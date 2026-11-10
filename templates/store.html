@@ -33,7 +33,6 @@
 <section class="container py-4 py-lg-5" style="--accent: {{ merchant.accent or '#12805C' }};">
     <div class="section-heading">
         <div>
-            <span class="eyebrow eyebrow--muted">Pick something they'll love</span>
             <h2 class="h2 mb-1">{{ 'KFC Uganda menu' if merchant.name == 'KFC' else 'Gift menu' }}</h2>
         </div>
         <span class="results-pill">{{ menu_item_count }} items available</span>
@@ -103,7 +102,6 @@
 <section class="container py-4 py-lg-5">
     <div class="section-heading">
         <div>
-            <span class="eyebrow eyebrow--muted">Pick something they'll love</span>
             <h2 class="h2 mb-1">{{ 'Bakery gifts' if merchant.name == 'Sweet Crumbs Bakery' else 'Gift packages' }}</h2>
         </div>
         <span class="results-pill">{{ products|length }} available</span>
