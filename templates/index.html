@@ -3,45 +3,45 @@
 {% block title %}Send a gift voucher{% endblock %}
 
 {% block content %}
-<section class="hero">
+<section class="hero hero--center">
     <div class="container">
-        <div class="row align-items-center g-5">
-            <div class="col-lg-7">
-                <h1 class="hero__title">A gift from you,<br>collected at their favourite shop.</h1>
-                <p class="hero__lead">Pick a treat from a Kampala store, add a personal note and send it by WhatsApp or SMS. They show the code at the till and collect it.</p>
+        <div class="hero__mark" aria-hidden="true"><i class="bi bi-gift"></i></div>
+        <p class="sg-label">Digital gift vouchers for Uganda</p>
+        <h1 class="hero__title">Send a Gift.<br>Make Their Day.</h1>
+        <p class="hero__lead">Pick a treat from a Kampala store, add a personal message and send it by WhatsApp or SMS.
+            They show the code at the till and collect their gift.</p>
 
-                <form class="search" role="search" id="searchForm" autocomplete="off" action="{{ url_for('index') }}" method="GET">
-                    <label for="storeSearch" class="visually-hidden">Search stores and gifts</label>
-                    <i class="bi bi-search search__icon" aria-hidden="true"></i>
-                    <input id="storeSearch" type="search" class="search__input" name="q"
-                           value="{{ request.args.get('q', '') }}"
-                           placeholder="Search stores or gifts: cake, earbuds, coffee…" inputmode="search" enterkeyhint="search">
-                    <button type="button" class="search__clear" id="clearSearch" hidden aria-label="Clear search"><i class="bi bi-x-lg"></i></button>
-                    <kbd class="search__kbd d-none d-md-inline" aria-hidden="true">/</kbd>
-                    <button class="visually-hidden" type="submit">Search</button>
-                </form>
-                <div class="hero__trust mt-3">
-                    <span><i class="bi bi-shield-check" aria-hidden="true"></i> One-time redemption</span>
-                    <span><i class="bi bi-phone" aria-hidden="true"></i> Share by WhatsApp or SMS</span>
-                </div>
+        <form class="search mx-auto" role="search" id="searchForm" autocomplete="off" action="{{ url_for('index') }}" method="GET">
+            <label for="storeSearch" class="visually-hidden">Search stores and gifts</label>
+            <i class="bi bi-search search__icon" aria-hidden="true"></i>
+            <input id="storeSearch" type="search" class="search__input" name="q"
+                   value="{{ request.args.get('q', '') }}"
+                   placeholder="Search stores or gifts: cake, earbuds, coffee…" inputmode="search" enterkeyhint="search">
+            <button type="button" class="search__clear" id="clearSearch" hidden aria-label="Clear search"><i class="bi bi-x-lg"></i></button>
+            <kbd class="search__kbd d-none d-md-inline" aria-hidden="true">/</kbd>
+            <button class="visually-hidden" type="submit">Search</button>
+        </form>
+        <div class="hero__trust">
+            <span><i class="bi bi-shield-check" aria-hidden="true"></i> One-time redemption</span>
+            <span><i class="bi bi-phone" aria-hidden="true"></i> Share by WhatsApp or SMS</span>
+            <span><i class="bi bi-shop" aria-hidden="true"></i> Collect in store</span>
+        </div>
+
+        <div class="ticket ticket--hero" aria-hidden="true">
+            <div class="ticket__top" style="--accent:#5B3A29;">
+                <div class="ticket__value">UGX 34,000</div>
+                <div class="ticket__item">Coffee Date for Two</div>
+                <div class="ticket__store"><i class="bi bi-cup-hot"></i> Java House</div>
             </div>
-
-            <div class="col-lg-5">
-                <div class="ticket ticket--hero" aria-hidden="true">
-                    <div class="ticket__top" style="--accent:#5B3A29;">
-                        <div class="ticket__value">UGX 34,000</div>
-                        <div class="ticket__item">Coffee Date for Two</div>
-                        <div class="ticket__store"><i class="bi bi-cup-hot"></i> Java House</div>
-                    </div>
-                    <div class="ticket__tear"></div>
-                    <div class="ticket__bottom">
-                        <div class="ticket__from">From <strong>Sarah</strong></div>
-                        <div class="ticket__note">“Happy birthday! Coffee and cake are on me.”</div>
-                        <div class="ticket__code">GIFT-7KQM-4XPD</div>
-                    </div>
-                </div>
+            <div class="ticket__tear"></div>
+            <div class="ticket__bottom">
+                <div class="ticket__from">From <strong>Sarah</strong></div>
+                <div class="ticket__note">“Happy birthday! Coffee and cake are on me.”</div>
+                <div class="ticket__code">GIFT-7KQM-4XPD</div>
             </div>
         </div>
+
+        <a href="#storeGrid" class="btn btn-primary btn-lg hero__cta">Browse stores</a>
     </div>
 </section>
 
@@ -60,12 +60,11 @@
 </div>
 
 <section class="container py-4 py-lg-5">
-    <div class="section-heading">
-        <div>
-            <h2 class="h2 mb-1">Find their kind of gift</h2>
-            <p class="text-muted mb-0">Coffee, cakes, gadgets and more, from stores across Kampala.</p>
-        </div>
-        <p class="text-muted small mb-0" id="resultCount" aria-live="polite">{{ merchants|length }} stores</p>
+    <div class="section-heading section-heading--center">
+        <p class="sg-label">Partner stores</p>
+        <h2 class="h2">Find Their Kind of Gift</h2>
+        <p class="text-muted mb-1">Coffee, cakes, gadgets and more, from stores across Kampala.</p>
+        <p class="small mb-0" id="resultCount" aria-live="polite">{{ merchants|length }} stores</p>
     </div>
 
     <div class="row g-3 g-lg-4" id="storeGrid">
@@ -75,7 +74,6 @@
              data-products="{{ m.product_titles or '' }}">
             <article class="store-card">
                 {{ media(covers.get(m.id), m.icon, m.accent, m.name) }}
-                <span class="store-card__cat">{{ m.category }}</span>
                 <div class="store-card__body">
                     <h3 class="store-card__name">
                         <a href="{{ url_for('store_catalog', merchant_id=m.id) }}" class="stretched-link">{{ m.name }}</a>
@@ -85,6 +83,7 @@
                     {% endif %}
                     <p class="store-card__desc">{{ m.description }}</p>
                     <p class="store-card__match" hidden></p>
+                    <span class="card-tag">{{ m.category }}</span>
                     <div class="store-card__foot">
                         {% if m.product_count %}
                         <span class="store-card__price">From {{ m.min_price|ugx }}</span>
@@ -109,7 +108,11 @@
 
 <section class="how">
     <div class="container">
-        <h2 class="h2 mb-4">How it works</h2>
+        <div class="section-heading section-heading--center">
+            <p class="sg-label">Simple and secure</p>
+            <h2 class="h2">How It Works</h2>
+            <p class="text-muted mb-0">Three steps from choosing a gift to collecting it.</p>
+        </div>
         <ol class="how__steps">
             <li><span class="how__n">1</span><div><strong>Choose a gift</strong><p>Pick a package from a partner store. The value is fixed, so the recipient knows what they get.</p></div></li>
             <li><span class="how__n">2</span><div><strong>Send it</strong><p>Pay with Mobile Money, then share the voucher by WhatsApp or SMS with your message.</p></div></li>

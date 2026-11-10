@@ -68,7 +68,7 @@ class StoreMenuTests(unittest.TestCase):
     def test_sweet_crumbs_keeps_curated_products_not_a_generic_menu(self):
         self.assertNotIn("Sweet Crumbs Bakery", STORE_MENUS)
         page = self.client.get(f"/store/{self.merchant_id('Sweet Crumbs Bakery')}").get_data(as_text=True)
-        self.assertIn("Bakery gifts", page)
+        self.assertIn("Bakery Gifts", page)
         self.assertIn("Rainbow Layer Cake", page)
 
     def test_every_store_page_renders(self):

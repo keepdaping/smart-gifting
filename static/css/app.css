@@ -2643,3 +2643,582 @@ legend.form-label {
         animation: none;
     }
 }
+
+/* ==================================================================
+   KYUES-style theme (Nov 2026)
+   Clean centred layout: bold sans headings, mint gradient page headers,
+   white bordered cards with inset photos, dark green centred footer.
+   Loaded last so it takes over from the layers above.
+   ================================================================== */
+:root {
+    --sg-primary: #16845b;
+    --sg-primary-dark: #106443;
+    --sg-green: #106443;
+    --sg-dark: #172b25;
+    --sg-ink: #172b25;
+    --sg-muted: #53635c;
+    --sg-line: #e5eee8;
+    --sg-soft: #f5f9f6;
+    --sg-mint: linear-gradient(135deg, #e8f5ed, #f5faf7);
+    --sg-card-shadow: 0 12px 30px rgb(0 0 0 / 8%);
+    --sg-radius: 12px;
+    --sg-radius-sm: 7px;
+}
+
+body {
+    color: var(--sg-dark);
+    font-family: var(--sg-sans);
+}
+
+h1, h2, h3, h4, h5,
+.h1, .h2, .h3, .h4, .h5,
+.sg-brand__name,
+.store-card__name,
+.product-card__title,
+.ticket__value,
+.ticket__note,
+.how__steps strong,
+.checkout-total strong,
+.sg-footer strong {
+    font-family: var(--sg-sans);
+    font-variation-settings: normal;
+    font-style: normal;
+}
+
+h1, h2, h3, h4, h5,
+.h1, .h2, .h3, .h4, .h5 {
+    color: var(--sg-dark);
+    font-weight: 800;
+    letter-spacing: -.02em;
+}
+
+.h2, h2 {
+    font-size: clamp(1.75rem, 1.3rem + 1.4vw, 2.2rem);
+    line-height: 1.2;
+}
+
+/* Small green spaced label above headings, as on KYUES */
+.sg-label {
+    margin-bottom: .65rem;
+    color: var(--sg-primary);
+    font-size: .8rem;
+    font-weight: 800;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+}
+
+/* Buttons: solid green, 7px corners, lift on hover */
+.btn {
+    border-radius: var(--sg-radius-sm);
+    font-weight: 700;
+}
+
+.btn-primary {
+    --bs-btn-bg: var(--sg-primary);
+    --bs-btn-border-color: var(--sg-primary);
+    --bs-btn-hover-bg: var(--sg-primary-dark);
+    --bs-btn-hover-border-color: var(--sg-primary-dark);
+    --bs-btn-active-bg: var(--sg-primary-dark);
+    --bs-btn-active-border-color: var(--sg-primary-dark);
+    box-shadow: none;
+}
+
+.btn-primary:hover {
+    box-shadow: none;
+    transform: translateY(-2px);
+}
+
+.btn-lg {
+    padding: .85rem 1.9rem;
+    font-size: 1rem;
+}
+
+/* Navigation: wordmark left, links centred, CTA right */
+.sg-nav {
+    padding-block: .9rem;
+    background: #fff;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border-bottom: 0;
+    box-shadow: 0 2px 12px rgb(0 0 0 / 6%);
+}
+
+.sg-brand__mark {
+    display: none;
+}
+
+.sg-brand__name {
+    color: var(--sg-dark);
+    font-size: 1.6rem;
+    font-weight: 800;
+    letter-spacing: -.03em;
+}
+
+.sg-brand__name span,
+.sg-footer__logo span {
+    color: var(--sg-primary);
+}
+
+.sg-link {
+    padding: .4rem .9rem;
+    color: var(--sg-muted);
+    background: transparent;
+    border-radius: 0;
+    font-size: .95rem;
+    font-weight: 600;
+}
+
+.sg-link:hover,
+.sg-link.is-active {
+    color: var(--sg-primary);
+    background: transparent;
+}
+
+.sg-link i {
+    display: none;
+}
+
+.sg-nav__cta {
+    padding: .7rem 1.35rem;
+}
+
+/* Hero: centred on a mint gradient */
+.hero,
+.hero--center {
+    padding: clamp(4rem, 8vw, 6.25rem) 0 clamp(3.5rem, 7vw, 5.5rem);
+    text-align: center;
+    background: var(--sg-mint);
+}
+
+.hero__mark,
+.page-hero__mark {
+    display: inline-grid;
+    place-items: center;
+    width: 6.5rem;
+    height: 6.5rem;
+    margin-bottom: 1.4rem;
+    color: var(--sg-primary);
+    background: #fff;
+    border: 4px solid var(--sg-primary);
+    border-radius: 50%;
+    font-size: 2.6rem;
+}
+
+.hero__title {
+    max-width: 850px;
+    margin: 0 auto 1.4rem;
+    color: var(--sg-dark);
+    font-size: clamp(2.4rem, 1.4rem + 4vw, 3.9rem);
+    font-weight: 800;
+    line-height: 1.15;
+    letter-spacing: -.025em;
+}
+
+.hero__lead {
+    max-width: 650px;
+    margin: 0 auto 2rem;
+    color: var(--sg-muted);
+    font-size: 1.13rem;
+}
+
+.search {
+    border-radius: var(--sg-radius);
+    box-shadow: 0 6px 22px rgb(0 0 0 / 6%);
+}
+
+.hero__trust {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: .5rem 1.5rem;
+    margin-top: 1.1rem;
+    color: var(--sg-muted);
+    font-size: .9rem;
+    font-weight: 600;
+}
+
+.hero .ticket--hero {
+    max-width: 420px;
+    margin: 3rem auto 0;
+    text-align: left;
+}
+
+.hero__cta {
+    margin-top: 2.5rem;
+}
+
+/* Inner page header: same mint band, centred */
+.page-hero {
+    padding: clamp(2.5rem, 6vw, 4.5rem) 0 clamp(3rem, 6vw, 4.75rem);
+    text-align: center;
+    background: var(--sg-mint);
+}
+
+.page-hero__mark {
+    width: 5.5rem;
+    height: 5.5rem;
+    margin: .5rem 0 1.1rem;
+    color: var(--accent);
+    border-color: var(--accent);
+    font-size: 2.2rem;
+}
+
+.page-hero__title {
+    margin: 0 auto .9rem;
+    font-size: clamp(2.1rem, 1.4rem + 3vw, 3rem);
+    font-weight: 800;
+}
+
+.page-hero__lead {
+    max-width: 650px;
+    margin: 0 auto;
+    color: var(--sg-muted);
+    font-size: 1.07rem;
+}
+
+.sg-crumb a {
+    color: var(--sg-primary);
+}
+
+/* Section headings: centred */
+.section-heading--center {
+    display: block;
+    max-width: 650px;
+    margin: 0 auto 2.75rem;
+    text-align: center;
+}
+
+.section-heading--center .h2 {
+    margin-bottom: .75rem;
+}
+
+#resultCount {
+    color: var(--sg-primary);
+    font-weight: 700;
+}
+
+/* Category filter: centred row of chips */
+.filterbar {
+    background: #fff;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border-block: 1px solid var(--sg-line);
+}
+
+.chips {
+    justify-content: center;
+}
+
+.chip {
+    border-radius: var(--sg-radius-sm);
+    font-weight: 600;
+}
+
+.chip.is-active {
+    background: var(--sg-primary);
+    border-color: var(--sg-primary);
+}
+
+/* Cards: white, thin border, inset photo, lift on hover */
+.store-card,
+.product-card {
+    padding: 1.1rem 1.1rem 0;
+    background: #fff;
+    border: 1px solid var(--sg-line);
+    border-radius: var(--sg-radius);
+    box-shadow: none;
+    transition: transform .3s ease, box-shadow .3s ease;
+}
+
+.store-card:hover,
+.product-card:hover {
+    border-color: var(--sg-line);
+    box-shadow: var(--sg-card-shadow);
+    transform: translateY(-6px);
+}
+
+.store-card:hover .media-tile img,
+.product-card:hover .media-tile img {
+    transform: none;
+}
+
+.store-card .media-tile,
+.product-card .media-tile,
+.media-tile {
+    border-radius: 10px;
+}
+
+.store-card__body,
+.product-card__body {
+    padding: 1.25rem .35rem 1.25rem;
+}
+
+.store-card__name,
+.product-card__title {
+    margin-bottom: .6rem;
+    font-size: 1.25rem;
+    font-weight: 700;
+    letter-spacing: -.01em;
+}
+
+.store-card__desc,
+.product-card__desc {
+    color: var(--sg-muted);
+    font-size: .95rem;
+}
+
+.card-tag {
+    display: block;
+    width: 100%;
+    margin: .2rem 0 1rem;
+    padding: .45rem .8rem;
+    color: var(--sg-primary-dark);
+    background: #e8f5ed;
+    border-radius: 999px;
+    font-size: .8rem;
+    font-weight: 700;
+}
+
+.store-card__foot,
+.product-card__foot {
+    border-top: 1px solid var(--sg-line);
+}
+
+.store-card__price,
+.price,
+.menu-price {
+    color: var(--sg-primary-dark);
+    font-weight: 800;
+}
+
+/* Menu tabs and options */
+.menu-tabs-wrap {
+    background: #fff;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+.menu-tabs {
+    justify-content: center;
+}
+
+.menu-tabs .nav-link {
+    border-radius: var(--sg-radius-sm);
+    font-weight: 600;
+}
+
+.menu-tabs .nav-link.active {
+    background: var(--sg-primary);
+    border-color: var(--sg-primary);
+}
+
+.variant-pill {
+    border-radius: var(--sg-radius-sm);
+}
+
+.btn-check:checked + .variant-pill {
+    color: #fff;
+    background: var(--sg-primary);
+    border-color: var(--sg-primary);
+}
+
+/* Voucher: keep the ribbon, switch to the bold sans look */
+.ticket {
+    border-radius: 14px;
+    box-shadow: 0 18px 45px rgb(23 43 37 / 18%);
+}
+
+.ticket__value {
+    font-weight: 800;
+    letter-spacing: -.02em;
+}
+
+.ticket__note {
+    font-size: 1rem;
+    font-weight: 500;
+}
+
+.ticket--hero {
+    transform: none;
+    animation: sg-rise .8s ease .1s both;
+}
+
+@keyframes sg-rise {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+/* Panels and forms */
+.panel {
+    border: 1px solid var(--sg-line);
+    border-radius: var(--sg-radius);
+    box-shadow: none;
+}
+
+.form-control,
+.form-select,
+.input-group-text {
+    border-radius: var(--sg-radius-sm);
+}
+
+.form-section-heading__icon {
+    border-radius: 50%;
+}
+
+.checkout-total strong {
+    font-weight: 800;
+}
+
+/* How it works: light band with KYUES feature cards */
+.how {
+    background: var(--sg-soft);
+}
+
+.how__steps li {
+    padding: 2.1rem 1.75rem;
+    border: 1px solid var(--sg-line);
+    border-radius: var(--sg-radius);
+    box-shadow: none;
+    transition: transform .3s ease, box-shadow .3s ease;
+}
+
+.how__steps li:hover {
+    box-shadow: var(--sg-card-shadow);
+    transform: translateY(-7px);
+}
+
+.how__n {
+    color: #fff;
+    background: var(--sg-primary);
+    border: 0;
+    font-family: var(--sg-sans);
+    font-weight: 800;
+}
+
+.how__steps strong {
+    font-size: 1.15rem;
+    font-weight: 700;
+}
+
+/* Footer: dark, centred, two-tone wordmark */
+.sg-footer {
+    padding: 3.4rem 0;
+    color: #c2d0c8;
+    background: var(--sg-dark);
+    text-align: center;
+}
+
+.sg-footer__inner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.sg-footer__logo {
+    color: #fff;
+    font-size: 1.7rem;
+    font-weight: 800;
+    letter-spacing: -.03em;
+    text-decoration: none;
+}
+
+.sg-footer__logo:hover {
+    color: #fff;
+}
+
+.sg-footer__logo span {
+    color: #3ccb8e;
+}
+
+.sg-footer p {
+    margin: .75rem 0 0;
+}
+
+.sg-footer__links {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: .5rem 1.6rem;
+    margin-top: 1.4rem;
+}
+
+.sg-footer__links a {
+    color: #fff;
+    text-decoration: none;
+}
+
+.sg-footer__links a:hover {
+    color: #3ccb8e;
+}
+
+.sg-footer__fine {
+    width: 100%;
+    max-width: 760px;
+    margin-top: 1.6rem !important;
+    padding-top: 1.4rem;
+    border-top: 1px solid rgb(255 255 255 / 12%);
+    font-size: .85rem;
+}
+
+@media (max-width: 767.98px) {
+    .sg-nav__cta {
+        width: 100%;
+        margin: .5rem 0 .25rem;
+    }
+
+    .sg-link {
+        padding-inline: 0;
+    }
+
+    .chips,
+    .menu-tabs {
+        justify-content: flex-start;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .ticket--hero {
+        animation: none;
+    }
+
+    .how__steps li,
+    .store-card,
+    .product-card {
+        transition: none;
+    }
+
+    .how__steps li:hover {
+        transform: none;
+    }
+}
+
+.page-hero .sg-crumb .breadcrumb-item.active,
+.page-hero .sg-crumb .breadcrumb-item + .breadcrumb-item::before {
+    color: var(--sg-muted);
+}
+
+/* Centre the chip rows without clipping the first chip when they scroll */
+.chips,
+.menu-tabs {
+    justify-content: flex-start !important;
+}
+
+.chips > :first-child,
+.menu-tabs > :first-child {
+    margin-left: auto;
+}
+
+.chips > :last-child,
+.menu-tabs > :last-child {
+    margin-right: auto;
+}
+
+.product-card__title {
+    color: var(--sg-dark);
+}

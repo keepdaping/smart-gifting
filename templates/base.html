@@ -24,15 +24,14 @@
         <div class="container">
             <a class="sg-brand" href="{{ url_for('index') }}" aria-label="Smart Gifting home">
                 <span class="sg-brand__mark"><i class="bi bi-gift-fill" aria-hidden="true"></i></span>
-                <span class="sg-brand__name">Smart Gifting</span>
-                <span class="sg-brand__badge">UG</span>
+                <span class="sg-brand__name">Smart<span>Gifting</span></span>
             </a>
             <button class="navbar-toggler border-0 shadow-none" type="button" data-bs-toggle="collapse"
                     data-bs-target="#navMenu" aria-controls="navMenu" aria-expanded="false" aria-label="Toggle menu">
                 <i class="bi bi-list fs-2"></i>
             </button>
-            <div class="collapse navbar-collapse justify-content-end" id="navMenu">
-                <ul class="navbar-nav align-items-md-center gap-md-1">
+            <div class="collapse navbar-collapse" id="navMenu">
+                <ul class="navbar-nav align-items-md-center gap-md-1 mx-md-auto">
                     <li class="nav-item">
                         <a class="sg-link {% if request.endpoint in ('index', 'store_catalog', 'buy_gift', 'view_voucher') %}is-active{% endif %}"
                            {% if request.endpoint in ('index', 'store_catalog', 'buy_gift', 'view_voucher') %}aria-current="page"{% endif %}
@@ -45,6 +44,9 @@
                            {% if cashier %}<span class="sg-dot" title="Signed in as {{ cashier.name }}"></span>{% endif %}</a>
                     </li>
                 </ul>
+                <a class="btn btn-primary sg-nav__cta" href="{{ url_for('index') }}#storeGrid">
+                    <i class="bi bi-gift me-1" aria-hidden="true"></i> Send a gift
+                </a>
             </div>
         </div>
     </nav>
@@ -71,14 +73,19 @@
     </main>
 
     <footer class="sg-footer">
-        <div class="container d-flex flex-column flex-md-row justify-content-between gap-2">
-            <div>
-                <strong>Smart Gifting</strong> is a Makerere University academic project (2026).
-            </div>
-            <div class="sg-footer__note">
-                Store names are used for demonstration only and imply no partnership. Payments are simulated.
-                <a href="{{ url_for('photo_credits') }}" class="sg-footer__link">Photo credits</a>
-            </div>
+        <div class="container sg-footer__inner">
+            <a href="{{ url_for('index') }}" class="sg-footer__logo" aria-label="Smart Gifting home">Smart<span>Gifting</span></a>
+            <p>Digital gift vouchers for stores across Uganda.</p>
+            <p class="sg-footer__slogan">Send a gift. Make their day.</p>
+            <nav class="sg-footer__links" aria-label="Footer navigation">
+                <a href="{{ url_for('index') }}">Marketplace</a>
+                <a href="{{ url_for('merchant_verify') }}">Cashier portal</a>
+                <a href="{{ url_for('photo_credits') }}">Photo credits</a>
+            </nav>
+            <p class="sg-footer__fine">
+                &copy; 2026 Smart Gifting, a Makerere University academic project. Store names are used for
+                demonstration only and imply no partnership. Payments are simulated.
+            </p>
         </div>
     </footer>
 

@@ -3,39 +3,32 @@
 {% block title %}{{ merchant.name }}{% endblock %}
 
 {% block content %}
-<section class="store-hero{{ ' store-hero--cover' if cover }}" style="--accent: {{ merchant.accent or '#12805C' }};{% if cover %} --cover: url('{{ cover }}');{% endif %}">
+<section class="page-hero" style="--accent: {{ merchant.accent or '#16845B' }};">
     <div class="container">
         <nav aria-label="breadcrumb">
-            <ol class="breadcrumb sg-crumb">
+            <ol class="breadcrumb sg-crumb justify-content-center">
                 <li class="breadcrumb-item"><a href="{{ url_for('index') }}">Marketplace</a></li>
                 <li class="breadcrumb-item active" aria-current="page">{{ merchant.name }}</li>
             </ol>
         </nav>
-        <div class="store-hero__card">
-            <div class="store-hero__row">
-                <span class="store-hero__mark"><i class="bi {{ merchant.icon or 'bi-shop' }}" aria-hidden="true"></i></span>
-                <div class="store-hero__copy">
-                    <span class="store-category-badge">{{ merchant.category }}</span>
-                    <h1 class="store-hero__name">{{ merchant.name }}</h1>
-                    <p class="store-hero__desc">{{ merchant.description }}</p>
-                    <div class="store-hero__trust">
-                        <span><i class="bi bi-patch-check me-1" aria-hidden="true"></i>Redeem in store</span>
-                        <span><i class="bi bi-shield-check me-1" aria-hidden="true"></i>One-time voucher</span>
-                        {% if menu_item_count %}<span><i class="bi bi-grid me-1" aria-hidden="true"></i>{{ menu_item_count }} gift ideas</span>{% endif %}
-                    </div>
-                </div>
-            </div>
+        <span class="page-hero__mark"><i class="bi {{ merchant.icon or 'bi-shop' }}" aria-hidden="true"></i></span>
+        <p class="sg-label">{{ merchant.category }}</p>
+        <h1 class="page-hero__title">{{ merchant.name }}</h1>
+        <p class="page-hero__lead">{{ merchant.description }}</p>
+        <div class="hero__trust">
+            <span><i class="bi bi-patch-check" aria-hidden="true"></i> Redeem in store</span>
+            <span><i class="bi bi-shield-check" aria-hidden="true"></i> One-time voucher</span>
+            {% if menu_item_count %}<span><i class="bi bi-grid" aria-hidden="true"></i> {{ menu_item_count }} gift ideas</span>{% endif %}
         </div>
     </div>
 </section>
 
 {% if menu_categories %}
 <section class="container py-4 py-lg-5" style="--accent: {{ merchant.accent or '#12805C' }};">
-    <div class="section-heading">
-        <div>
-            <h2 class="h2 mb-1">{{ 'KFC Uganda menu' if merchant.name == 'KFC' else 'Gift menu' }}</h2>
-        </div>
-        <span class="results-pill">{{ menu_item_count }} items available</span>
+    <div class="section-heading section-heading--center">
+        <p class="sg-label">Choose a gift</p>
+        <h2 class="h2">{{ 'KFC Uganda Menu' if merchant.name == 'KFC' else 'Gift Menu' }}</h2>
+        <p class="text-muted mb-0">{{ menu_item_count }} items available. Pick one and add your message.</p>
     </div>
 
     <div class="menu-tabs-wrap">
@@ -100,11 +93,10 @@
 </section>
 {% else %}
 <section class="container py-4 py-lg-5">
-    <div class="section-heading">
-        <div>
-            <h2 class="h2 mb-1">{{ 'Bakery gifts' if merchant.name == 'Sweet Crumbs Bakery' else 'Gift packages' }}</h2>
-        </div>
-        <span class="results-pill">{{ products|length }} available</span>
+    <div class="section-heading section-heading--center">
+        <p class="sg-label">Choose a gift</p>
+        <h2 class="h2">{{ 'Bakery Gifts' if merchant.name == 'Sweet Crumbs Bakery' else 'Gift Packages' }}</h2>
+        <p class="text-muted mb-0">{{ products|length }} available. Pick one and add your message.</p>
     </div>
     {% if price_notice %}
     <div class="alert alert-warning" role="note">{{ price_notice }}</div>
