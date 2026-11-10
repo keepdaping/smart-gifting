@@ -3222,3 +3222,18 @@ h1, h2, h3, h4, h5,
 .product-card__title {
     color: var(--sg-dark);
 }
+
+/* Plain vouchers: no ribbon, in keeping with the clean KYUES look */
+.ticket::after,
+.ticket--full .ticket__top::after {
+    display: none;
+}
+
+.ticket__top,
+.ticket__bottom {
+    padding-right: 2rem;
+}
+
+.hero__cta {
+    margin-top: 2rem;
+}
