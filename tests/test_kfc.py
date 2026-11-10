@@ -143,7 +143,7 @@ class KfcMenuTests(unittest.TestCase):
         self.assertEqual(page.count('loading="eager"'), expected_cards - 1)
         self.assertIn("Demo data from KFC Uganda menu. Prices may vary by branch. Not affiliated with KFC.", page)
         self.assertNotIn("/static/img/kfc/missing-photo.jpg", page)
-        self.assertIn("background:#f1f3f2", page)
+        self.assertIn('class="media-tile__fallback"', page)  # neutral tile, styled in app.css
 
     def test_purchase_snapshots_price_and_redemption_is_audited(self):
         db = connect(self.database)
