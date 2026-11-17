@@ -566,3 +566,132 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     });
 })();
+
+
+/* Face check: camera capture for the recipient (register) and the cashier (check).
+   Photos are resized in the browser and sent once; the server keeps only a faceprint. */
+(() => {
+    const MAX_SIDE = 640;
+
+    const toJpeg = (source, width, height) => new Promise((resolve) => {
+        const scale = Math.min(1, MAX_SIDE / Math.max(width, height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(width * scale);
+        canvas.height = Math.round(height * scale);
+        canvas.getContext("2d").drawImage(source, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob(resolve, "image/jpeg", 0.85);
+    });
+
+    document.querySelectorAll("[data-face-capture]").forEach((box) => {
+        const cam = box.querySelector(".face-cam");
+        const video = box.querySelector("video");
+        const start = box.querySelector("[data-face-start]");
+        const shoot = box.querySelector("[data-face-shoot]");
+        const file = box.querySelector("[data-face-file]");
+        const msg = box.querySelector(".face-msg");
+        const consent = box.dataset.requireConsent ? document.querySelector(box.dataset.requireConsent) : null;
+        let stream = null;
+
+        const say = (text, tone) => {
+            msg.textContent = text;
+            msg.className = `face-msg small mt-2 mb-0${tone ? ` text-${tone}` : ""}`;
+        };
+        const stop = () => {
+            if (stream) {
+                stream.getTracks().forEach((t) => t.stop());
+                stream = null;
+            }
+        };
+        const needsConsent = () => {
+            if (consent && !consent.checked) {
+                say("Please tick the box to agree first.", "danger");
+                consent.focus();
+                return true;
+            }
+            return false;
+        };
+
+        const send = async (blob) => {
+            if (!blob) {
+                say("The photo could not be taken. Please try again.", "danger");
+                return;
+            }
+            const data = new FormData();
+            box.querySelectorAll("input[name]").forEach((input) => {
+                if (input.type === "checkbox" && !input.checked) {
+                    return;
+                }
+                if (input.type !== "file") {
+                    data.append(input.name, input.value);
+                }
+            });
+            data.append("photo", blob, "face.jpg");
+            [shoot, start].forEach((b) => b && (b.disabled = true));
+            say("Checking the photo…");
+            try {
+                const response = await fetch(box.dataset.endpoint, { method: "POST", body: data, headers: { Accept: "application/json" } });
+                const result = await response.json().catch(() => ({}));
+                const good = response.ok && result.ok && result.matched !== false;
+                say(result.message || (good ? "Done." : "Something went wrong. Please try again."), good ? "success" : "danger");
+                if (good || result.attempts_left === 0) {
+                    stop();
+                    cam.hidden = true;
+                    if (shoot) {
+                        shoot.hidden = true;
+                    }
+                    if (box.dataset.successReload) {
+                        setTimeout(() => window.location.reload(), good ? 900 : 1600);
+                    }
+                }
+            } catch (error) {
+                say("Could not reach the server. Check the connection and try again.", "danger");
+            } finally {
+                [shoot, start].forEach((b) => b && (b.disabled = false));
+            }
+        };
+
+        start && start.addEventListener("click", async () => {
+            if (needsConsent()) {
+                return;
+            }
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                say("This browser cannot open the camera here. Choose a selfie instead.", "danger");
+                return;
+            }
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 960 } }, audio: false });
+                video.srcObject = stream;
+                cam.hidden = false;
+                start.hidden = true;
+                shoot.hidden = false;
+                say("Look straight at the camera in good light, then press the button.");
+            } catch (error) {
+                say("The camera could not be opened. Allow camera access, or choose a selfie instead.", "danger");
+            }
+        });
+
+        shoot && shoot.addEventListener("click", async () => {
+            if (needsConsent() || !video.videoWidth) {
+                return;
+            }
+            send(await toJpeg(video, video.videoWidth, video.videoHeight));
+        });
+
+        file && file.addEventListener("change", async () => {
+            const picked = file.files && file.files[0];
+            file.value = "";
+            if (!picked || needsConsent()) {
+                return;
+            }
+            const image = new Image();
+            image.onload = async () => {
+                URL.revokeObjectURL(image.src);
+                send(await toJpeg(image, image.naturalWidth, image.naturalHeight));
+            };
+            image.onerror = () => say("That file is not a photo. Choose a selfie.", "danger");
+            image.src = URL.createObjectURL(picked);
+        });
+
+        window.addEventListener("pagehide", stop);
+    });
+})();
