@@ -3645,3 +3645,111 @@ h1, h2, h3, h4, h5,
 @media (max-width: 575.98px) {
     .hero__ai-hint { display: none; }
 }
+
+/* AI gift finder: motion ------------------------------------------- */
+/* 1. The button rises in shortly after the page loads */
+.finder-fab {
+    animation: finder-fab-in .6s var(--sg-ease) .5s both;
+    isolation: isolate;
+}
+
+/* 2. A soft ring pulses out three times to draw the eye, then stops */
+.finder-fab::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    background: var(--sg-primary);
+    animation: finder-fab-pulse 2.2s ease-out 1.4s 3;
+    opacity: 0;
+}
+
+/* 3. The sparkle icon twinkles every few seconds */
+.finder-fab .bi-stars {
+    display: inline-block;
+    animation: finder-twinkle 4s ease-in-out 2s infinite;
+}
+
+.finder-fab:hover .bi-stars { animation: finder-spin .6s var(--sg-ease); }
+
+/* 4. A small speech bubble invites people in, once per visit */
+.finder-teaser {
+    position: fixed;
+    right: clamp(1rem, 3vw, 2rem);
+    bottom: calc(clamp(1rem, 3vw, 2rem) + 4.1rem);
+    z-index: 1040;
+    max-width: 240px;
+    padding: .7rem 1rem;
+    color: var(--sg-ink);
+    background: #fff;
+    border: 1px solid var(--sg-line);
+    border-radius: 14px 14px 4px 14px;
+    box-shadow: var(--sg-shadow-lift, 0 12px 32px rgb(10 61 46 / 14%));
+    font: inherit;
+    font-size: .9rem;
+    line-height: 1.35;
+    text-align: left;
+    cursor: pointer;
+    animation: finder-teaser-in .45s var(--sg-ease) both;
+}
+
+.finder-teaser strong { color: var(--sg-primary); }
+.finder-teaser.is-leaving { animation: finder-teaser-out .3s ease both; }
+
+/* 5. Results fade up one after another */
+.finder-panel #finderResults > div {
+    animation: finder-card-in .45s var(--sg-ease) both;
+    animation-delay: calc(var(--i, 0) * 70ms);
+}
+
+.finder-panel .finder__status:not(:empty) { animation: finder-teaser-in .3s ease both; }
+
+@keyframes finder-fab-in {
+    from { opacity: 0; transform: translateY(24px) scale(.9); }
+    to { opacity: 1; transform: none; }
+}
+
+@keyframes finder-fab-pulse {
+    0% { opacity: .45; transform: scale(1); }
+    100% { opacity: 0; transform: scale(1.45, 1.8); }
+}
+
+@keyframes finder-twinkle {
+    0%, 80%, 100% { transform: scale(1) rotate(0); }
+    86% { transform: scale(1.3) rotate(-12deg); }
+    92% { transform: scale(.9) rotate(8deg); }
+}
+
+@keyframes finder-spin {
+    from { transform: rotate(0) scale(1); }
+    50% { transform: rotate(180deg) scale(1.25); }
+    to { transform: rotate(360deg) scale(1); }
+}
+
+@keyframes finder-teaser-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: none; }
+}
+
+@keyframes finder-teaser-out {
+    to { opacity: 0; transform: translateY(8px); }
+}
+
+@keyframes finder-card-in {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: none; }
+}
+
+@media (max-width: 575.98px) {
+    .finder-teaser { bottom: calc(1rem + 3.9rem); max-width: 200px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .finder-fab,
+    .finder-fab::before,
+    .finder-fab .bi-stars,
+    .finder-teaser,
+    .finder-panel #finderResults > div,
+    .finder-panel .finder__status:not(:empty) { animation: none !important; }
+}

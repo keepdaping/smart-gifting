@@ -489,7 +489,11 @@ document.addEventListener("DOMContentLoaded", () => {
             const stores = new Set(recs.map((r) => r.merchant.name)).size;
             status.textContent = `${recs.length} gift${recs.length === 1 ? "" : "s"} from ${stores} store${stores === 1 ? "" : "s"}` +
                 (data.budget ? `, all within ${ugx(data.budget)}.` : ".");
-            recs.forEach((rec) => results.append(card(rec)));
+            recs.forEach((rec, i) => {
+                const node = card(rec);
+                node.style.setProperty("--i", i);
+                results.append(node);
+            });
         } catch (error) {
             if (requestId === lastRequest) {
                 status.textContent = error && error.name === "TimeoutError"
@@ -508,6 +512,47 @@ document.addEventListener("DOMContentLoaded", () => {
         run(input.value);
     });
     const panel = document.getElementById("giftFinder");
+    const fab = document.querySelector(".finder-fab");
+
+    // A small speech bubble above the button, shown once per visit on the homepage.
+    let teaser = null;
+    const hideTeaser = () => {
+        if (!teaser) {
+            return;
+        }
+        const node = teaser;
+        teaser = null;
+        node.classList.add("is-leaving");
+        node.addEventListener("animationend", () => node.remove(), { once: true });
+        setTimeout(() => node.remove(), 500);
+    };
+    const seen = () => {
+        try { return sessionStorage.getItem("sgFinderTeaser") === "1"; } catch (e) { return true; }
+    };
+    const markSeen = () => {
+        try { sessionStorage.setItem("sgFinderTeaser", "1"); } catch (e) { /* storage blocked: show again next time */ }
+    };
+    if (fab && panel && window.location.pathname === "/" && !seen()) {
+        setTimeout(() => {
+            if (panel.classList.contains("show")) {
+                return;
+            }
+            teaser = document.createElement("button");
+            teaser.type = "button";
+            teaser.className = "finder-teaser";
+            teaser.innerHTML = "<strong>Not sure what to get?</strong><br>Tell me who it's for and your budget.";
+            teaser.addEventListener("click", () => {
+                window.bootstrap && window.bootstrap.Offcanvas.getOrCreateInstance(panel).show();
+            });
+            document.body.append(teaser);
+            markSeen();
+            setTimeout(hideTeaser, 7000);
+        }, 3500);
+    }
+    if (panel) {
+        panel.addEventListener("show.bs.offcanvas", hideTeaser);
+    }
+
     if (panel && window.bootstrap) {
         panel.addEventListener("shown.bs.offcanvas", () => input.focus());
         if (window.location.hash === "#giftFinder") {
