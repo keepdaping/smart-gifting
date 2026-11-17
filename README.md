@@ -126,10 +126,12 @@ and `CASHIER_PIN` in the dashboard.
 
 When buying, the sender can choose **"Only the recipient can collect it"** (on by default).
 
-1. The recipient opens the gift link, agrees to the consent note and takes one selfie. The server keeps
+1. The recipient opens the gift link, agrees to the consent note and does the same live scan
+   (or uploads one selfie if their camera does not work). The server keeps
    only a 128-number faceprint, never the photo. The sender's own browser cannot register a face.
-2. At the till, the cashier opens the camera and checks the customer's face. The **Redeem** button stays
-   locked until the face matches (or the fallback below succeeds).
+2. At the till, the cashier starts a **live face scan**. It runs automatically: the customer looks straight,
+   turns their head left and right (random order) and looks straight again, so a printed photo or a phone
+   screen cannot pass. The **Redeem** button stays locked until the face matches (or the fallback below succeeds).
 3. **Fallback:** if no face was registered, the camera is not available, or the face fails three times,
    the cashier sends a one-time code to the recipient's phone (simulated SMS in the demo).
 4. The faceprint is deleted as soon as the gift is collected. Every check is written to the audit trail.
