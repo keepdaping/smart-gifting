@@ -33,6 +33,10 @@ ROC curve: `results/roc-orl-at-t.png`. Raw numbers: `results/metrics-orl-at-t.js
       python -m ml.face.evaluate path/to/our_faces --name "Group volunteers"
 
   One sub-folder per person. Only run this with written consent, and delete the photos afterwards.
-* There is no liveness check: a good printed photo or a screen could fool the camera. The cashier
-  sees the person in front of them, the check is one layer among several (one-time code, single-use
-  voucher, fraud check), and three failed matches force the one-time code.
+* **Liveness (head-turn check).** The camera scans automatically and asks the person to look
+  straight, turn left and right (random order), then look straight again. A still photo cannot pass
+  the turns, and every frame must show the same person as the first, so a photo cannot be swapped in.
+  Head turn is measured from YuNet's landmarks (nose offset from the eye midpoint / eye distance):
+  straight below 0.12, turned above 0.18. Limits: a video of the recipient turning their head, or a
+  realistic mask, could still pass; the cashier seeing the person, the 3-strike limit and the
+  one-time code remain the other layers.

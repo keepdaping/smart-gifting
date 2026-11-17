@@ -581,7 +581,7 @@ def csrf_token():
     return session["_csrf"]
 
 
-FACE_UPLOAD_ENDPOINTS = {"register_face", "merchant_face_check"}
+FACE_UPLOAD_ENDPOINTS = {"register_face", "face_live_frame"}
 
 
 @app.before_request
@@ -1251,32 +1251,26 @@ def _face_photo():
     return data, None
 
 
-@app.route("/voucher/<voucher_code>/face", methods=["POST"])
-def register_face(voucher_code):
-    """The recipient registers their face once; only the faceprint is kept."""
-    db = get_db()
-    code = normalise_code(voucher_code)
+def _registration_problem(db, code, consent):
+    """None if this browser may register a face for the voucher, else a JSON error response."""
     voucher = fetch_voucher(db, code)
     if not voucher:
-        abort(404)
+        return jsonify(ok=False, message="Voucher not found."), 404
     if not voucher["face_lock"] or voucher["status"] != "ACTIVE":
         return jsonify(ok=False, message="This gift does not need a face check."), 400
     if voucher["face_print"]:
         return jsonify(ok=False, message="A face is already registered for this gift."), 409
     if sent_by_this_browser(code):
         return jsonify(ok=False, message="Only the person receiving the gift can register their face."), 403
-    if request.form.get("consent") != "yes":
+    if consent != "yes":
         return jsonify(ok=False, message="Please tick the box to agree before registering your face."), 400
-    service = face_service()
-    if service is None:
+    if face_service() is None:
         return jsonify(ok=False, message="Face check is not available right now. The cashier will use a one-time code."), 503
-    data, problem = _face_photo()
-    if problem:
-        return jsonify(ok=False, message=problem), 400
-    try:
-        faceprint = service.embed(service.decode_image(data))
-    except service.FaceError as exc:
-        return jsonify(ok=False, message=str(exc)), 422
+    return None
+
+
+def _store_faceprint(db, code, faceprint):
+    service = face_service()
     # Compare-and-set: only the first registration wins.
     cur = db.execute(
         "UPDATE vouchers SET face_print = ?, face_enrolled_at = ? "
@@ -1285,7 +1279,27 @@ def register_face(voucher_code):
     db.commit()
     if cur.rowcount != 1:
         return jsonify(ok=False, message="A face is already registered for this gift."), 409
-    return jsonify(ok=True, message="Face registered. Show your code at the till; the cashier will check your face.")
+    return jsonify(ok=True, done=True,
+                   message="Face registered. Show your code at the till; the cashier will check your face.")
+
+
+@app.route("/voucher/<voucher_code>/face", methods=["POST"])
+def register_face(voucher_code):
+    """Fallback for phones without a working camera stream: register from one selfie."""
+    db = get_db()
+    code = normalise_code(voucher_code)
+    problem = _registration_problem(db, code, request.form.get("consent"))
+    if problem:
+        return problem
+    service = face_service()
+    data, problem = _face_photo()
+    if problem:
+        return jsonify(ok=False, message=problem), 400
+    try:
+        faceprint = service.embed(service.decode_image(data))
+    except service.FaceError as exc:
+        return jsonify(ok=False, message=str(exc)), 422
+    return _store_faceprint(db, code, faceprint)
 
 
 def pickup_state(voucher):
@@ -1643,14 +1657,10 @@ def merchant_redeem():
     return redirect(url_for("merchant_verify", code=code))
 
 
-@app.route("/merchant/face-check", methods=["POST"])
-def merchant_face_check():
-    """Compare the person at the till with the face the recipient registered."""
-    db = get_db()
-    cashier = authenticated_cashier(db)
+def _cashier_face_problem(db, cashier, code):
+    """None if the cashier may run a face check on this voucher, else a JSON error response."""
     if not cashier:
         return jsonify(ok=False, message="Sign in to the cashier portal first."), 401
-    code = normalise_code(request.form.get("voucher_code", ""))
     voucher = _cashier_voucher(db, cashier, code)
     if voucher is None:
         return jsonify(ok=False, message="This voucher cannot be redeemed here."), 404
@@ -1659,34 +1669,89 @@ def merchant_face_check():
         return jsonify(ok=False, message="The recipient has not registered a face. Use a one-time code."), 409
     if state["face_locked_out"]:
         return jsonify(ok=False, message="Too many failed face checks. Use a one-time code."), 429
-    service = face_service()
-    if service is None:
+    if face_service() is None:
         return jsonify(ok=False, message="Face check is not available. Use a one-time code."), 503
-    data, problem = _face_photo()
-    if problem:
-        return jsonify(ok=False, message=problem), 400
-    try:
-        result = service.compare(service.from_text(voucher["face_print"]), service.decode_image(data))
-    except service.FaceError as exc:
-        return jsonify(ok=False, retry=True, message=str(exc)), 422
+    return None
+
+
+def _finish_cashier_check(db, cashier, code, faceprint):
+    """Compare the live face with the registered one; unlock redemption on a match."""
+    service = face_service()
+    voucher = _cashier_voucher(db, cashier, code)
+    score = round(service.similarity(service.from_text(voucher["face_print"]), faceprint), 3)
     client_key = client_rate_limit_key()
-    if result.matched:
+    if score >= service.MATCH_THRESHOLD:
         db.execute("UPDATE vouchers SET pickup_verified_at = ?, pickup_method = 'face' "
                    "WHERE voucher_code = ? AND status = 'ACTIVE'", (utc_now(), code))
         log_event(db, code, cashier["merchant_id"], "FACE_MATCH", client_key=client_key,
                   menu_item_id=voucher["menu_item_id"], cashier=cashier["name"],
-                  verify_method="face", face_score=result.score)
-        return jsonify(ok=True, matched=True, score=result.score,
+                  verify_method="face", face_score=score)
+        return jsonify(ok=True, done=True, matched=True, score=score,
                        message="Face matched. You can hand over the gift.")
     db.execute("UPDATE vouchers SET face_failures = face_failures + 1 WHERE voucher_code = ?", (code,))
     log_event(db, code, cashier["merchant_id"], "FACE_NO_MATCH", client_key=client_key,
               menu_item_id=voucher["menu_item_id"], cashier=cashier["name"],
-              verify_method="face", face_score=result.score)
+              verify_method="face", face_score=score)
     left = max(FACE_MAX_FAILURES - voucher["face_failures"] - 1, 0)
     message = ("Face did not match. Do not hand over the gift. "
                + (f"{left} more {'try' if left == 1 else 'tries'}, then use a one-time code."
                   if left else "Use a one-time code to the recipient's phone instead."))
-    return jsonify(ok=True, matched=False, score=result.score, attempts_left=left, message=message)
+    return jsonify(ok=True, done=True, matched=False, score=score, attempts_left=left, message=message)
+
+
+@app.route("/face/live/start", methods=["POST"])
+def face_live_start():
+    """Start a live face scan (recipient registration or cashier check)."""
+    from ml.face import liveness
+    db = get_db()
+    purpose = request.form.get("purpose")
+    code = normalise_code(request.form.get("voucher_code", ""))
+    if purpose == "register":
+        problem = _registration_problem(db, code, request.form.get("consent"))
+    elif purpose == "cashier":
+        problem = _cashier_face_problem(db, authenticated_cashier(db), code)
+    else:
+        return jsonify(ok=False, message="Unknown face check."), 400
+    if problem:
+        return problem
+    state = liveness.new_challenge()
+    state.update(purpose=purpose, code=code)
+    session["face_live"] = state
+    return jsonify(ok=True, step=0, steps=state["steps"], prompt=liveness.PROMPTS["center"])
+
+
+@app.route("/face/live/frame", methods=["POST"])
+def face_live_frame():
+    """One camera frame of a live scan; finishes the registration or check on the last step."""
+    from ml.face import liveness, service
+    db = get_db()
+    state = session.get("face_live")
+    if not isinstance(state, dict) or "steps" not in state:
+        return jsonify(ok=False, restart=True, message="Start the camera again."), 409
+    code, purpose = state["code"], state["purpose"]
+    cashier = authenticated_cashier(db) if purpose == "cashier" else None
+    problem = (_cashier_face_problem(db, cashier, code) if purpose == "cashier"
+               else _registration_problem(db, code, "yes"))
+    if problem:
+        session.pop("face_live", None)
+        return problem
+    data, bad = _face_photo()
+    if bad:
+        return jsonify(ok=True, step=state["i"], steps=state["steps"], prompt=bad)
+    try:
+        state, faceprint, message = liveness.advance(state, service.decode_image(data))
+    except liveness.Restart as exc:
+        session.pop("face_live", None)
+        return jsonify(ok=False, restart=True, message=str(exc))
+    except service.FaceError as exc:
+        return jsonify(ok=True, step=state["i"], steps=state["steps"], prompt=str(exc))
+    if faceprint is None:
+        session["face_live"] = state
+        return jsonify(ok=True, step=state["i"], steps=state["steps"], prompt=message)
+    session.pop("face_live", None)
+    if purpose == "register":
+        return _store_faceprint(db, code, faceprint)
+    return _finish_cashier_check(db, cashier, code, faceprint)
 
 
 @app.route("/merchant/pickup-code/send", methods=["POST"])

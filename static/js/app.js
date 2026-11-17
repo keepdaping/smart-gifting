@@ -635,7 +635,9 @@ document.addEventListener("DOMContentLoaded", () => {
                 say(result.message || (good ? "Done." : "Something went wrong. Please try again."), good ? "success" : "danger");
                 if (good || result.attempts_left === 0) {
                     stop();
-                    cam.hidden = true;
+                    if (cam) {
+                        cam.hidden = true;
+                    }
                     if (shoot) {
                         shoot.hidden = true;
                     }
@@ -690,6 +692,178 @@ document.addEventListener("DOMContentLoaded", () => {
             };
             image.onerror = () => say("That file is not a photo. Choose a selfie.", "danger");
             image.src = URL.createObjectURL(picked);
+        });
+
+        window.addEventListener("pagehide", stop);
+    });
+})();
+
+
+
+/* Live face scan: scans automatically and asks the person to turn their head,
+   so a printed photo or a phone screen cannot pass. One small frame is sent about
+   three times a second; the server decides when each step is done. */
+(() => {
+    const LABELS = { center: "Straight", left: "Left", right: "Right", final: "Straight" };
+    const FRAME_SIDE = 400;
+    const FRAME_GAP_MS = 280;
+
+    document.querySelectorAll("[data-face-live]").forEach((box) => {
+        const cam = box.querySelector(".face-cam");
+        const video = box.querySelector("video");
+        const prompt = box.querySelector(".face-cam__prompt");
+        const arrow = box.querySelector(".face-cam__arrow");
+        const stepsList = box.querySelector(".face-steps");
+        const start = box.querySelector("[data-face-start]");
+        const msg = box.querySelector(".face-msg");
+        const consent = box.dataset.requireConsent ? document.querySelector(box.dataset.requireConsent) : null;
+        const canvas = document.createElement("canvas");
+        let stream = null;
+        let running = false;
+        let steps = [];
+
+        const field = (name) => (box.querySelector(`input[name="${name}"]`) || {}).value || "";
+        const say = (text, tone) => {
+            msg.textContent = text || "";
+            msg.className = `face-msg small mt-2 mb-0${tone ? ` text-${tone}` : ""}`;
+        };
+        const stop = () => {
+            running = false;
+            if (stream) {
+                stream.getTracks().forEach((t) => t.stop());
+                stream = null;
+            }
+        };
+        const showSteps = (current) => {
+            stepsList.replaceChildren(...steps.map((step, i) => {
+                const li = document.createElement("li");
+                li.textContent = LABELS[step];
+                li.className = i < current ? "is-done" : (i === current ? "is-current" : "");
+                return li;
+            }));
+            stepsList.hidden = false;
+            const step = steps[current];
+            const turning = step === "left" || step === "right";
+            arrow.hidden = !turning;
+            // The preview is mirrored, so the person's left is on the left of the screen.
+            arrow.className = `face-cam__arrow${turning ? ` face-cam__arrow--${step}` : ""}`;
+            arrow.firstElementChild.className = `bi bi-arrow-${step === "right" ? "right" : "left"}`;
+            cam.dataset.step = step || "";
+        };
+        const post = async (url, extra) => {
+            const data = new FormData();
+            data.append("csrf_token", field("csrf_token"));
+            Object.entries(extra).forEach(([k, v]) => data.append(k, v));
+            const response = await fetch(url, { method: "POST", body: data, headers: { Accept: "application/json" } });
+            const result = await response.json().catch(() => ({ ok: false, message: "Something went wrong. Please try again." }));
+            return { response, result };
+        };
+        const grab = () => new Promise((resolve) => {
+            const w = video.videoWidth;
+            const h = video.videoHeight;
+            const scale = Math.min(1, FRAME_SIDE / Math.max(w, h));
+            canvas.width = Math.round(w * scale);
+            canvas.height = Math.round(h * scale);
+            canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
+            canvas.toBlob(resolve, "image/jpeg", 0.75);
+        });
+
+        const begin = async () => {
+            const { result } = await post(box.dataset.startUrl, {
+                purpose: field("purpose"), voucher_code: field("voucher_code"),
+                consent: consent && consent.checked ? "yes" : "",
+            });
+            if (!result.ok) {
+                stop();
+                cam.hidden = true;
+                start.hidden = false;
+                say(result.message, "danger");
+                return false;
+            }
+            steps = result.steps;
+            showSteps(0);
+            prompt.textContent = result.prompt;
+            say("");
+            return true;
+        };
+
+        const loop = async () => {
+            while (running) {
+                const started = performance.now();
+                if (video.videoWidth) {
+                    const blob = await grab();
+                    let reply;
+                    try {
+                        const data = new FormData();
+                        data.append("csrf_token", field("csrf_token"));
+                        data.append("photo", blob, "frame.jpg");
+                        const response = await fetch(box.dataset.frameUrl, { method: "POST", body: data, headers: { Accept: "application/json" } });
+                        reply = await response.json().catch(() => ({ ok: false, message: "Something went wrong." }));
+                    } catch (error) {
+                        reply = { ok: true, prompt: "Connection is slow… keep still." };
+                    }
+                    if (!running) {
+                        return;
+                    }
+                    if (reply.restart) {
+                        prompt.textContent = reply.message;
+                        await new Promise((r) => setTimeout(r, 1400));
+                        if (!running || !(await begin())) {
+                            return;
+                        }
+                        continue;
+                    }
+                    if (reply.done) {
+                        const good = reply.ok && reply.matched !== false;
+                        stop();
+                        showSteps(steps.length);
+                        cam.classList.add(good ? "face-cam--ok" : "face-cam--bad");
+                        prompt.textContent = good ? "✓" : "✗";
+                        say(reply.message, good ? "success" : "danger");
+                        setTimeout(() => window.location.reload(), good ? 1100 : 2000);
+                        return;
+                    }
+                    if (!reply.ok) {
+                        stop();
+                        say(reply.message, "danger");
+                        return;
+                    }
+                    if (typeof reply.step === "number") {
+                        showSteps(reply.step);
+                    }
+                    prompt.textContent = reply.prompt || "";
+                }
+                const wait = FRAME_GAP_MS - (performance.now() - started);
+                if (wait > 0) {
+                    await new Promise((r) => setTimeout(r, wait));
+                }
+            }
+        };
+
+        start.addEventListener("click", async () => {
+            if (consent && !consent.checked) {
+                say("Please tick the box to agree first.", "danger");
+                consent.focus();
+                return;
+            }
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                say("This browser cannot open the camera here.", "danger");
+                return;
+            }
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 640 } }, audio: false });
+            } catch (error) {
+                say("The camera could not be opened. Allow camera access and try again.", "danger");
+                return;
+            }
+            video.srcObject = stream;
+            cam.hidden = false;
+            cam.classList.remove("face-cam--ok", "face-cam--bad");
+            start.hidden = true;
+            if (await begin()) {
+                running = true;
+                loop();
+            }
         });
 
         window.addEventListener("pagehide", stop);

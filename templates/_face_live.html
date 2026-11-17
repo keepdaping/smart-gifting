@@ -1,0 +1,22 @@
+{# Live face scan: opens the camera, scans automatically and asks for head turns.
+   Needs: purpose ('register' or 'cashier'), code, and optionally consent_selector. #}
+<div class="face-live" data-face-live data-purpose="{{ purpose }}"
+     data-start-url="{{ url_for('face_live_start') }}" data-frame-url="{{ url_for('face_live_frame') }}"
+     {% if consent_selector %}data-require-consent="{{ consent_selector }}"{% endif %}>
+    {{ csrf_field() }}
+    <input type="hidden" name="voucher_code" value="{{ code }}">
+    <input type="hidden" name="purpose" value="{{ purpose }}">
+    <div class="face-cam" hidden>
+        <video playsinline muted autoplay></video>
+        <div class="face-cam__guide" aria-hidden="true"></div>
+        <div class="face-cam__arrow" aria-hidden="true"><i class="bi bi-arrow-left"></i></div>
+        <p class="face-cam__prompt" role="status" aria-live="polite"></p>
+    </div>
+    <ol class="face-steps" hidden aria-label="Face check steps"></ol>
+    <div class="d-grid gap-2">
+        <button type="button" class="btn {{ button_class or 'btn-primary' }}" data-face-start>
+            <i class="bi bi-camera me-2" aria-hidden="true"></i>{{ start_label or 'Open camera' }}
+        </button>
+    </div>
+    <p class="face-msg small mt-2 mb-0" role="status" aria-live="polite"></p>
+</div>

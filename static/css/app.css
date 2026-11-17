@@ -3778,3 +3778,59 @@ h1, h2, h3, h4, h5,
 /* Larger, easier-to-tap consent box */
 .face-box .form-check-input { width: 1.35em; height: 1.35em; margin-top: .15em; cursor: pointer; }
 .face-box .form-check-label { cursor: pointer; padding-left: .35rem; }
+
+/* Live face scan ------------------------------------------------------- */
+.face-cam__prompt {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    margin: 0;
+    padding: .55rem .75rem;
+    color: #fff;
+    background: linear-gradient(transparent, rgb(0 0 0 / 70%));
+    font-weight: 700;
+    font-size: .95rem;
+    text-align: center;
+}
+.face-cam__guide { transition: border-color .25s ease, transform .35s ease; }
+.face-cam[data-step="left"] .face-cam__guide { transform: translateX(-6%) rotateY(18deg); border-color: #ffd36b; }
+.face-cam[data-step="right"] .face-cam__guide { transform: translateX(6%) rotateY(-18deg); border-color: #ffd36b; }
+.face-cam--ok .face-cam__guide { border: 4px solid #3ddc84; }
+.face-cam--bad .face-cam__guide { border: 4px solid #ff6b6b; }
+.face-cam--ok .face-cam__prompt { background: rgb(18 128 92 / 85%); font-size: 1.6rem; }
+.face-cam--bad .face-cam__prompt { background: rgb(176 42 55 / 85%); font-size: 1.6rem; }
+.face-cam__arrow {
+    position: absolute;
+    top: 50%;
+    font-size: 2.6rem;
+    color: #ffd36b;
+    text-shadow: 0 2px 8px rgb(0 0 0 / 50%);
+    transform: translateY(-50%);
+    pointer-events: none;
+}
+.face-cam__arrow[hidden] { display: none; }
+.face-cam__arrow--left { left: 6%; animation: face-nudge-left 1s ease-in-out infinite; }
+.face-cam__arrow--right { right: 6%; animation: face-nudge-right 1s ease-in-out infinite; }
+.face-steps {
+    display: flex;
+    gap: .35rem;
+    margin: 0 0 .75rem;
+    padding: 0;
+    list-style: none;
+    font-size: .78rem;
+}
+.face-steps li {
+    flex: 1;
+    padding: .35rem .25rem;
+    color: var(--sg-muted);
+    text-align: center;
+    background: var(--sg-soft);
+    border-radius: 999px;
+}
+.face-steps li.is-current { color: #fff; background: var(--sg-primary); font-weight: 700; }
+.face-steps li.is-done { color: var(--sg-primary); background: #dff1e8; }
+.face-steps li.is-done::before { content: "✓ "; }
+@keyframes face-nudge-left { 50% { transform: translate(-10px, -50%); } }
+@keyframes face-nudge-right { 50% { transform: translate(10px, -50%); } }
+@media (prefers-reduced-motion: reduce) {
+    .face-cam__arrow--left, .face-cam__arrow--right { animation: none; }
+}

@@ -99,10 +99,30 @@ class FaceCheckFlowTests(unittest.TestCase):
         with self.cashier.session_transaction() as session:
             session["cashier"] = {"merchant_id": self.item["merchant_id"], "name": self.item["name"]}
 
-    def face_check(self, code, name):
-        data = {"csrf_token": self.csrf(self.cashier, f"/merchant/verify?code={code}"),
-                "voucher_code": code, "photo": (open(FACES / name, "rb"), "face.jpg")}
-        return self.cashier.post("/merchant/face-check", data=data, content_type="multipart/form-data")
+    A_SCAN = ["live-a-center.jpg", "live-a-left.jpg", "live-a-right.jpg", "live-a-center-2.jpg"]
+    B_SCAN = ["live-b-center.jpg", "live-b-left.jpg", "live-b-right.jpg", "live-b-center.jpg"]
+
+    def live_scan(self, client, purpose, code, frames, consent="yes"):
+        """Run the live scan with a fixed step order (straight, left, right, straight)."""
+        token = self.csrf(client, f"/merchant/verify?code={code}" if purpose == "cashier" else f"/voucher/{code}")
+        started = client.post("/face/live/start", data={"csrf_token": token, "purpose": purpose,
+                                                        "voucher_code": code, "consent": consent})
+        if started.status_code != 200:
+            return started
+        with client.session_transaction() as session:
+            state = session["face_live"]
+            state["steps"] = ["center", "left", "right", "final"]
+            session["face_live"] = state
+        reply = None
+        for name in frames:
+            reply = client.post("/face/live/frame", content_type="multipart/form-data",
+                                data={"csrf_token": token, "photo": (open(FACES / name, "rb"), "f.jpg")})
+            if reply.get_json().get("done") or reply.get_json().get("restart"):
+                break
+        return reply
+
+    def face_check(self, code, frames):
+        return self.live_scan(self.cashier, "cashier", code, frames)
 
     def redeem(self, code):
         token = self.csrf(self.cashier, f"/merchant/verify?code={code}")
@@ -159,12 +179,12 @@ class FaceCheckFlowTests(unittest.TestCase):
 
     def test_wrong_face_is_rejected_and_right_face_unlocks_redemption(self):
         code = self.buy()
-        self.register(self.recipient, code, name="person-a-1.jpg")
+        self.register(self.recipient, code, name="live-a-center.jpg")
         self.sign_in_cashier()
-        wrong = self.face_check(code, "person-b-1.jpg").get_json()
+        wrong = self.face_check(code, self.B_SCAN).get_json()
         self.assertFalse(wrong["matched"])
         self.assertEqual(self.voucher(code)["face_failures"], 1)
-        right = self.face_check(code, "person-a-2.jpg").get_json()
+        right = self.face_check(code, self.A_SCAN).get_json()
         self.assertTrue(right["matched"], right)
         self.redeem(code)
         used = self.voucher(code)
@@ -175,11 +195,50 @@ class FaceCheckFlowTests(unittest.TestCase):
 
     def test_repeated_mismatches_force_the_one_time_code(self):
         code = self.buy()
-        self.register(self.recipient, code, name="person-a-1.jpg")
+        self.register(self.recipient, code, name="live-a-center.jpg")
         self.sign_in_cashier()
         for _ in range(FACE_MAX_FAILURES):
-            self.assertFalse(self.face_check(code, "person-b-1.jpg").get_json()["matched"])
-        self.assertEqual(self.face_check(code, "person-a-2.jpg").status_code, 429)
+            self.assertFalse(self.face_check(code, self.B_SCAN).get_json()["matched"])
+        self.assertEqual(self.face_check(code, self.A_SCAN).status_code, 429)
+
+    def test_recipient_can_register_with_the_live_scan(self):
+        code = self.buy()
+        reply = self.live_scan(self.recipient, "register", code, self.A_SCAN).get_json()
+        self.assertTrue(reply["done"], reply)
+        self.assertIsNotNone(self.voucher(code)["face_print"])
+        # and the cashier's live scan of the same person then matches
+        self.sign_in_cashier()
+        self.assertTrue(self.face_check(code, self.A_SCAN).get_json()["matched"])
+
+    def test_live_scan_needs_consent_and_blocks_the_sender(self):
+        code = self.buy()
+        self.assertEqual(self.live_scan(self.recipient, "register", code, self.A_SCAN, consent="").status_code, 400)
+        self.assertEqual(self.live_scan(self.sender, "register", code, self.A_SCAN).status_code, 403)
+
+    def test_a_still_photo_never_passes_the_head_turns(self):
+        code = self.buy()
+        self.register(self.recipient, code, name="live-a-center.jpg")
+        self.sign_in_cashier()
+        reply = self.face_check(code, ["live-a-center.jpg"] * 8).get_json()
+        self.assertFalse(reply.get("done"), reply)
+        self.assertEqual(reply["step"], 1)          # stuck at "turn your head"
+        self.assertIn("turn your head", reply["prompt"].lower())
+        self.assertIsNone(self.voucher(code)["pickup_verified_at"])
+
+    def test_swapping_people_during_the_scan_restarts_it(self):
+        code = self.buy()
+        self.register(self.recipient, code, name="live-a-center.jpg")
+        self.sign_in_cashier()
+        reply = self.face_check(code, ["live-a-center.jpg", "live-b-left.jpg"]).get_json()
+        self.assertTrue(reply["restart"], reply)
+        self.assertIsNone(self.voucher(code)["pickup_verified_at"])
+
+    def test_old_single_photo_cashier_check_is_gone(self):
+        code = self.buy()
+        self.sign_in_cashier()
+        token = self.csrf(self.cashier, f"/merchant/verify?code={code}")
+        response = self.cashier.post("/merchant/face-check", data={"csrf_token": token, "voucher_code": code})
+        self.assertEqual(response.status_code, 404)
 
     def test_one_time_code_fallback_when_no_face_was_registered(self):
         code = self.buy()

@@ -109,21 +109,9 @@
                             {{ 'Face matched.' if pickup.method == 'face' else 'Pickup code confirmed.' }} You can hand over the gift.</p>
                         {% else %}
                             {% if pickup.face_ready and not pickup.face_locked_out %}
-                            <p class="small mb-2">This gift can only be collected by the recipient. Point the camera at the customer's face.</p>
-                            <div data-face-capture data-endpoint="{{ url_for('merchant_face_check') }}" data-success-reload="true">
-                                {{ csrf_field() }}
-                                <input type="hidden" name="voucher_code" value="{{ result.code }}">
-                                <div class="face-cam" hidden>
-                                    <video playsinline muted autoplay></video>
-                                    <div class="face-cam__guide" aria-hidden="true"></div>
-                                </div>
-                                <div class="d-grid gap-2">
-                                    <button type="button" class="btn btn-dark" data-face-start><i class="bi bi-camera me-2" aria-hidden="true"></i>Open camera</button>
-                                    <button type="button" class="btn btn-dark" data-face-shoot hidden><i class="bi bi-person-check me-2" aria-hidden="true"></i>Check face</button>
-                                </div>
-                                <p class="face-msg small mt-2 mb-0" role="status" aria-live="polite"></p>
-                            </div>
-                            {% elif pickup.face_locked_out %}
+                            <p class="small mb-2">This gift can only be collected by the recipient. Point the camera at the customer: it scans automatically and asks them to turn their head.</p>
+                            {% with purpose='cashier', code=result.code, button_class='btn-dark', start_label='Start face scan' %}{% include "_face_live.html" %}{% endwith %}
+                                                        {% elif pickup.face_locked_out %}
                             <p class="small text-danger mb-2"><i class="bi bi-person-x-fill me-1" aria-hidden="true"></i>The face did not match {{ pickup.failures }} times. Confirm with a one-time code instead.</p>
                             {% elif not pickup.enrolled %}
                             <p class="small mb-2">The recipient has not registered a face yet. Confirm it is them with a one-time code.</p>

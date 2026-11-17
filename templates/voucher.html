@@ -53,29 +53,23 @@
                 <p class="small mb-0">At the till, the cashier will send a one-time code to your phone to confirm it is you.</p>
                 {% else %}
                 <p class="face-box__head mb-1"><i class="bi bi-person-bounding-box me-1" aria-hidden="true"></i>Register your face to protect this gift</p>
-                <p class="small mb-3">{{ voucher.sender_name }} asked that only you can collect it. Take one selfie now; the cashier's camera will check it is you at pickup.</p>
-                <div data-face-capture data-endpoint="{{ url_for('register_face', voucher_code=voucher.voucher_code) }}"
-                     data-success-reload="true" data-require-consent="#faceConsent">
-                    {{ csrf_field() }}
-                    <div class="form-check mb-3">
+                <p class="small mb-3">{{ voucher.sender_name }} asked that only you can collect it. The camera scans your face and asks you to turn your head left and right. At pickup, the cashier's camera checks it is you.</p>
+                <div class="form-check mb-3">
                         <input class="form-check-input" type="checkbox" id="faceConsent" name="consent" value="yes">
                         <label class="form-check-label small" for="faceConsent">
                             I agree that Smart Gifting stores a faceprint (a list of numbers made from my photo, not the photo itself)
                             only to confirm it is me at pickup. It is deleted when I collect the gift.
                         </label>
                     </div>
-                    <div class="face-cam" hidden>
-                        <video playsinline muted autoplay></video>
-                        <div class="face-cam__guide" aria-hidden="true"></div>
-                    </div>
-                    <div class="d-grid gap-2">
-                        <button type="button" class="btn btn-primary" data-face-start><i class="bi bi-camera me-2" aria-hidden="true"></i>Open camera</button>
-                        <button type="button" class="btn btn-primary" data-face-shoot hidden><i class="bi bi-person-check me-2" aria-hidden="true"></i>Take selfie and register</button>
-                        <label class="btn btn-outline-dark mb-0" data-face-file-label>
-                            <i class="bi bi-image me-2" aria-hidden="true"></i>Or choose a selfie
-                            <input type="file" accept="image/*" capture="user" data-face-file hidden>
-                        </label>
-                    </div>
+                {% with purpose='register', code=voucher.voucher_code, consent_selector='#faceConsent', start_label='Start face scan' %}{% include "_face_live.html" %}{% endwith %}
+                <div class="mt-2" data-face-capture data-endpoint="{{ url_for('register_face', voucher_code=voucher.voucher_code) }}"
+                     data-success-reload="true" data-require-consent="#faceConsent">
+                    {{ csrf_field() }}
+                    <input type="hidden" name="consent" value="yes">
+                    <label class="btn btn-link btn-sm p-0 mb-0" data-face-file-label>
+                        Camera not working? Choose a selfie instead
+                        <input type="file" accept="image/*" capture="user" data-face-file hidden>
+                    </label>
                     <p class="face-msg small mt-2 mb-0" role="status" aria-live="polite"></p>
                 </div>
                 {% endif %}
