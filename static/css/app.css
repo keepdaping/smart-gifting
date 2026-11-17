@@ -3767,3 +3767,14 @@ h1, h2, h3, h4, h5,
 .pickup-check--ok { background: #ecf7f1; border-color: #bfe3cf; }
 .pickup-check__head { margin-bottom: .5rem; font-weight: 700; }
 .pickup-code summary { cursor: pointer; color: var(--sg-primary); }
+
+/* Ticked boxes and switches stay green while focused (an earlier :focus rule painted
+   them white, which hid the tick right after clicking). */
+.form-check-input:checked,
+.form-check-input:checked:focus {
+    background-color: var(--sg-primary);
+    border-color: var(--sg-primary);
+}
+/* Larger, easier-to-tap consent box */
+.face-box .form-check-input { width: 1.35em; height: 1.35em; margin-top: .15em; cursor: pointer; }
+.face-box .form-check-label { cursor: pointer; padding-left: .35rem; }
