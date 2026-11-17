@@ -412,7 +412,7 @@ document.addEventListener("DOMContentLoaded", () => {
     };
 
     const card = (rec) => {
-        const col = el("div", "col-12 col-sm-6 col-lg-3");
+        const col = el("div", "col-6");
         const article = el("article", "product-card finder-card");
         const media = el("div", "media-tile media-tile--menu");
         media.setAttribute("role", "img");
@@ -507,6 +507,13 @@ document.addEventListener("DOMContentLoaded", () => {
         event.preventDefault();
         run(input.value);
     });
+    const panel = document.getElementById("giftFinder");
+    if (panel && window.bootstrap) {
+        panel.addEventListener("shown.bs.offcanvas", () => input.focus());
+        if (window.location.hash === "#giftFinder") {
+            window.bootstrap.Offcanvas.getOrCreateInstance(panel).show();
+        }
+    }
     document.querySelectorAll("[data-finder-q]").forEach((chip) => {
         chip.addEventListener("click", () => {
             input.value = chip.dataset.finderQ;

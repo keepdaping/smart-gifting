@@ -77,6 +77,8 @@
         {% block content %}{% endblock %}
     </main>
 
+    {% block gift_finder %}{% include "_finder.html" %}{% endblock %}
+
     <footer class="sg-footer">
         <div class="container sg-footer__inner">
             <a href="{{ url_for('index') }}" class="sg-footer__logo" aria-label="Smart Gifting home">Smart<span>Gifting</span></a>

@@ -23,10 +23,21 @@ class AiPagesTests(unittest.TestCase):
 
     def test_homepage_has_gift_finder_wired_to_recommender(self):
         page = self.client.get("/").get_data(as_text=True)
-        self.assertIn('id="giftFinder"', page)
+        self.assertIn('id="giftFinder"', page)  # floating panel on every shopper page
         self.assertIn('id="finderForm"', page)
         self.assertIn('data-finder-q="birthday gift for my mum under 50k"', page)
         self.assertIn('href="/ai"', page)
+
+    def test_gift_finder_is_one_floating_panel_not_a_second_search_box(self):
+        home = self.client.get("/").get_data(as_text=True)
+        self.assertEqual(home.count('id="finderForm"'), 1)
+        self.assertIn('class="finder-fab"', home)
+        self.assertNotIn('<section class="finder"', home)
+        # shoppers can open it from other pages too
+        self.assertIn('id="giftFinder"', self.client.get("/ai").get_data(as_text=True))
+        # but not on the cashier portal
+        self.assertNotIn('id="giftFinder"', self.client.get("/merchant/verify").get_data(as_text=True))
+        self.assertIn("Cashier", self.client.get("/merchant/verify").get_data(as_text=True))
 
     def test_finder_example_queries_return_gifts_within_budget(self):
         for query, budget in [("birthday gift for my mum under 50k", 50000),
