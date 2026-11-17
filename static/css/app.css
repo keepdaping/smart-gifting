@@ -3587,3 +3587,61 @@ h1, h2, h3, h4, h5,
 .finder-card .menu-price {
     white-space: nowrap;
 }
+
+/* AI gift finder as a floating button + side panel ------------------- */
+.finder-fab {
+    position: fixed;
+    right: clamp(1rem, 3vw, 2rem);
+    bottom: clamp(1rem, 3vw, 2rem);
+    z-index: 1040;
+    display: inline-flex;
+    align-items: center;
+    gap: .55rem;
+    padding: .85rem 1.3rem;
+    color: #fff;
+    background: var(--sg-primary);
+    border: 0;
+    border-radius: 999px;
+    box-shadow: 0 12px 28px -8px rgb(18 128 92 / 55%);
+    font-weight: 700;
+    font-size: 1rem;
+    transition: transform .2s var(--sg-ease), background-color .2s var(--sg-ease);
+}
+
+.finder-fab:hover { background: var(--sg-primary-dark); transform: translateY(-2px); }
+.finder-fab:focus-visible { outline: 3px solid rgb(18 128 92 / 35%); outline-offset: 3px; }
+.finder-fab .bi { font-size: 1.15rem; }
+
+@media (max-width: 575.98px) {
+    .finder-fab { padding: .9rem; }
+    .finder-fab__text { display: none; }
+}
+
+.finder-panel { --bs-offcanvas-width: min(560px, 100vw); }
+.finder-panel .offcanvas-header { align-items: flex-start; border-bottom: 1px solid var(--sg-line); }
+.finder-panel .finder__form { max-width: none; }
+.finder-panel .finder__examples { justify-content: flex-start; margin-top: 1rem; }
+.finder-panel .finder__examples .chip { font-size: .85rem; }
+.finder-panel .finder__status { text-align: left; }
+.finder-panel #finderResults .col-6 { display: flex; }
+.finder-panel .finder-card { width: 100%; }
+.finder-panel .finder-card .product-card__desc { display: none; }
+.finder-panel .finder-card .product-card__title { font-size: 1rem; }
+.finder-panel .finder-card .product-card__foot { flex-direction: column; align-items: stretch; gap: .5rem; }
+.finder-panel .finder__about { text-align: left; margin-top: 1.25rem; }
+
+.hero__ai-hint { margin: 1rem 0 0; color: var(--sg-muted); }
+.hero__ai-hint .btn-link { font-weight: 700; color: var(--sg-primary); text-decoration: none; }
+.hero__ai-hint .btn-link:hover { text-decoration: underline; }
+
+/* Chip hover: keep text readable (an earlier layer set a dark background on hover) */
+.chip:hover:not(.is-active) {
+    color: var(--sg-ink);
+    background: var(--sg-soft);
+    border-color: #c9d7d1;
+}
+
+/* On phones the floating button is enough; the hero hint would sit under it */
+@media (max-width: 575.98px) {
+    .hero__ai-hint { display: none; }
+}
