@@ -75,6 +75,12 @@ CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no 0/O/1/I
 MAX_MESSAGE_LEN = 200
 MAX_FAILED_LOOKUPS = 8      # per client and store, per window
 LOOKUP_WINDOW_MINUTES = 5
+# Face check at pickup
+FACE_PHOTO_MAX_BYTES = 1024 * 1024   # camera photos are resized in the browser to ~60-120 KB
+FACE_MAX_FAILURES = 3                # after this, the cashier must use the one-time code
+PICKUP_VERIFY_MINUTES = 10           # a successful check is valid this long for redemption
+PICKUP_CODE_MINUTES = 10             # one-time code lifetime
+PICKUP_CODE_MAX_ATTEMPTS = 5
 KFC_CATEGORIES = (
     "Wings", "Streetwise", "Burgers & Wraps", "Boxes & Strips",
     "Bucket Meals", "Buckets", "Sides", "Desserts", "Drinks",
@@ -109,7 +115,14 @@ OUTCOMES = {
     "ALREADY_USED": ("Already used", "warning", "bi-exclamation-triangle-fill"),
     "WRONG_STORE": ("Wrong store", "danger", "bi-shop-window"),
     "NOT_FOUND": ("Not found", "danger", "bi-question-circle-fill"),
+    "FACE_MATCH": ("Face matched", "success", "bi-person-check-fill"),
+    "FACE_NO_MATCH": ("Face did not match", "danger", "bi-person-x-fill"),
+    "CODE_SENT": ("Pickup code sent", "secondary", "bi-chat-dots"),
+    "CODE_OK": ("Pickup code correct", "success", "bi-patch-check-fill"),
+    "CODE_WRONG": ("Wrong pickup code", "danger", "bi-x-octagon-fill"),
 }
+# Outcomes that count as rejected attempts on the cashier dashboard.
+REJECTED_OUTCOMES = ("ALREADY_USED", "WRONG_STORE", "NOT_FOUND", "FACE_NO_MATCH", "CODE_WRONG")
 
 
 # --------------------------------------------------------------------------
@@ -221,6 +234,16 @@ def init_db(path=None):
         "redeemed_at": "TIMESTAMP",
         "menu_item_id": "INTEGER REFERENCES menu_items(id)",
         "price_at_purchase": "INTEGER",
+        # Face check at pickup (only a faceprint is stored, never a photo)
+        "face_lock": "INTEGER NOT NULL DEFAULT 0",
+        "face_print": "TEXT",
+        "face_enrolled_at": "TIMESTAMP",
+        "face_failures": "INTEGER NOT NULL DEFAULT 0",
+        "pickup_verified_at": "TIMESTAMP",
+        "pickup_method": "TEXT",
+        "pickup_code_hash": "TEXT",
+        "pickup_code_expires_at": "TIMESTAMP",
+        "pickup_code_attempts": "INTEGER NOT NULL DEFAULT 0",
     })
     _add_missing_columns(cur, "audit_log", {
         "client_key": "TEXT",
@@ -228,6 +251,8 @@ def init_db(path=None):
         "cashier": "TEXT",
         "risk_score": "REAL",
         "risk_flag": "INTEGER",
+        "verify_method": "TEXT",
+        "face_score": "REAL",
     })
 
     voucher_columns = {
@@ -554,6 +579,15 @@ def csrf_token():
     if "_csrf" not in session:
         session["_csrf"] = secrets.token_urlsafe(24)
     return session["_csrf"]
+
+
+FACE_UPLOAD_ENDPOINTS = {"register_face", "merchant_face_check"}
+
+
+@app.before_request
+def allow_face_photo_size():
+    if request.endpoint in FACE_UPLOAD_ENDPOINTS:
+        request.max_content_length = FACE_PHOTO_MAX_BYTES + 64 * 1024
 
 
 @app.before_request
@@ -1016,6 +1050,7 @@ def _validate_gift_form(form):
     if method not in PAYMENT_METHODS:
         errors["payment_method"] = "Choose how you want to pay."
     clean["payment_method"] = method
+    clean["face_lock"] = form.get("face_lock") == "1"
     return clean, errors
 
 
@@ -1048,7 +1083,7 @@ def _buy(product_id=None, menu_item_id=None):
     if not product:
         abort(404)
 
-    form, errors = {"payment_method": "mtn"}, {}
+    form, errors = {"payment_method": "mtn", "face_lock": True}, {}
     if request.method == "POST":
         form, errors = _validate_gift_form(request.form)
         if not errors:
@@ -1084,23 +1119,25 @@ def _buy(product_id=None, menu_item_id=None):
                             """INSERT INTO vouchers (
                                    voucher_code, merchant_id, product_id, menu_item_id,
                                    price_at_purchase, sender_name, recipient_phone, message,
-                                   monetary_value, payment_method, created_at
-                               ) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                                   monetary_value, payment_method, created_at, face_lock
+                               ) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                             (code, product["merchant_id"], product["menu_item_id"],
                              product["monetary_value"], form["sender_name"],
                              form["recipient_phone"], form["message"],
-                             product["monetary_value"], form["payment_method"], utc_now()),
+                             product["monetary_value"], form["payment_method"], utc_now(),
+                             int(form["face_lock"])),
                         )
                     else:
                         db.execute(
                             """INSERT INTO vouchers (voucher_code, merchant_id, product_id,
                                    price_at_purchase, sender_name, recipient_phone, message,
-                                   monetary_value, payment_method, created_at)
-                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                                   monetary_value, payment_method, created_at, face_lock)
+                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                             (code, product["merchant_id"], product["id"],
                              product["monetary_value"], form["sender_name"],
                              form["recipient_phone"], form["message"],
-                             product["monetary_value"], form["payment_method"], utc_now()),
+                             product["monetary_value"], form["payment_method"], utc_now(),
+                             int(form["face_lock"])),
                         )
                     db.commit()
                     break
@@ -1109,6 +1146,8 @@ def _buy(product_id=None, menu_item_id=None):
             else:
                 abort(500)
             session["just_purchased"] = code
+            # Remember gifts this browser sent, so the sender cannot register their own face.
+            session["sent_codes"] = (session.get("sent_codes", []) + [code])[-30:]
             flash("Payment received. Your gift voucher is ready to send.", "success")
             return redirect(url_for("view_voucher", voucher_code=code))
         flash("Please fix the highlighted fields and try again.", "danger")
@@ -1168,8 +1207,132 @@ def view_voucher(voucher_code):
     link = url_for("view_voucher", voucher_code=code, _external=True)
     return render_template("voucher.html", voucher=voucher, share=build_share(voucher, link),
                            show_share=show_share,
+                           face=recipient_face_state(voucher),
                            price_notice=(SWEET_CRUMBS_PRICE_NOTICE
                                          if voucher["merchant_name"] == "Sweet Crumbs Bakery" else None))
+
+
+# --------------------------------------------------------------------------
+# Face check at pickup: the recipient registers their face, the cashier checks it
+# --------------------------------------------------------------------------
+def face_service():
+    """The face model module, or None when OpenCV or the model files are missing."""
+    try:
+        from ml.face import service
+    except ImportError:
+        return None
+    return service if service.available() else None
+
+
+def sent_by_this_browser(code):
+    return code in session.get("sent_codes", [])
+
+
+def recipient_face_state(voucher):
+    """What the voucher page shows about the face lock."""
+    if not voucher["face_lock"]:
+        return None
+    if voucher["face_print"]:
+        return "registered"
+    if voucher["status"] != "ACTIVE":
+        return None
+    if sent_by_this_browser(voucher["voucher_code"]):
+        return "sender"
+    return "register" if face_service() else "unavailable"
+
+
+def _face_photo():
+    photo = request.files.get("photo")
+    data = photo.read(FACE_PHOTO_MAX_BYTES + 1) if photo else b""
+    if not data:
+        return None, "No photo was received. Please take it again."
+    if len(data) > FACE_PHOTO_MAX_BYTES:
+        return None, "The photo is too large. Please take it again."
+    return data, None
+
+
+@app.route("/voucher/<voucher_code>/face", methods=["POST"])
+def register_face(voucher_code):
+    """The recipient registers their face once; only the faceprint is kept."""
+    db = get_db()
+    code = normalise_code(voucher_code)
+    voucher = fetch_voucher(db, code)
+    if not voucher:
+        abort(404)
+    if not voucher["face_lock"] or voucher["status"] != "ACTIVE":
+        return jsonify(ok=False, message="This gift does not need a face check."), 400
+    if voucher["face_print"]:
+        return jsonify(ok=False, message="A face is already registered for this gift."), 409
+    if sent_by_this_browser(code):
+        return jsonify(ok=False, message="Only the person receiving the gift can register their face."), 403
+    if request.form.get("consent") != "yes":
+        return jsonify(ok=False, message="Please tick the box to agree before registering your face."), 400
+    service = face_service()
+    if service is None:
+        return jsonify(ok=False, message="Face check is not available right now. The cashier will use a one-time code."), 503
+    data, problem = _face_photo()
+    if problem:
+        return jsonify(ok=False, message=problem), 400
+    try:
+        faceprint = service.embed(service.decode_image(data))
+    except service.FaceError as exc:
+        return jsonify(ok=False, message=str(exc)), 422
+    # Compare-and-set: only the first registration wins.
+    cur = db.execute(
+        "UPDATE vouchers SET face_print = ?, face_enrolled_at = ? "
+        "WHERE voucher_code = ? AND face_print IS NULL AND status = 'ACTIVE'",
+        (service.to_text(faceprint), utc_now(), code))
+    db.commit()
+    if cur.rowcount != 1:
+        return jsonify(ok=False, message="A face is already registered for this gift."), 409
+    return jsonify(ok=True, message="Face registered. Show your code at the till; the cashier will check your face.")
+
+
+def pickup_state(voucher):
+    """Recipient check status for the cashier screen (None when the gift has no face lock)."""
+    if not voucher["face_lock"]:
+        return None
+    now = datetime.now(timezone.utc)
+    fmt = "%Y-%m-%d %H:%M:%S"
+
+    def recent(value, minutes):
+        if not value:
+            return False
+        try:
+            when = datetime.strptime(str(value)[:19], fmt).replace(tzinfo=timezone.utc)
+        except ValueError:
+            return False
+        return now - when <= timedelta(minutes=minutes)
+
+    code_live = False
+    if voucher["pickup_code_hash"] and voucher["pickup_code_expires_at"]:
+        try:
+            expires = datetime.strptime(str(voucher["pickup_code_expires_at"])[:19], fmt).replace(tzinfo=timezone.utc)
+            code_live = now < expires and voucher["pickup_code_attempts"] < PICKUP_CODE_MAX_ATTEMPTS
+        except ValueError:
+            code_live = False
+    return {
+        "verified": recent(voucher["pickup_verified_at"], PICKUP_VERIFY_MINUTES),
+        "method": voucher["pickup_method"],
+        "enrolled": bool(voucher["face_print"]),
+        "face_ready": bool(voucher["face_print"]) and face_service() is not None,
+        "face_locked_out": voucher["face_failures"] >= FACE_MAX_FAILURES,
+        "failures": voucher["face_failures"],
+        "code_live": code_live,
+    }
+
+
+def _hash_pickup_code(code, pickup_code):
+    secret = app.config["SECRET_KEY"].encode("utf-8")
+    return hmac.new(secret, f"{code}:{pickup_code}".encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def _cashier_voucher(db, cashier, code):
+    """The active voucher for this store, or None."""
+    voucher = fetch_voucher(db, code)
+    if voucher is None or voucher["merchant_id"] != cashier["merchant_id"] or voucher["status"] != "ACTIVE":
+        return None
+    return voucher
 
 
 # --------------------------------------------------------------------------
@@ -1183,13 +1346,14 @@ def client_rate_limit_key():
 
 
 def log_event(db, code, merchant_id, outcome, client_key=None, menu_item_id=None, cashier=None,
-              risk=None):
+              risk=None, verify_method=None, face_score=None):
     db.execute(
         "INSERT INTO audit_log (voucher_code, merchant_id, outcome, created_at, client_key, "
-        "menu_item_id, cashier, risk_score, risk_flag) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "menu_item_id, cashier, risk_score, risk_flag, verify_method, face_score) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (code[:24], merchant_id, outcome, utc_now(), client_key, menu_item_id, cashier,
          risk["score"] if risk else None,
-         int(risk["suspicious"]) if risk else None),
+         int(risk["suspicious"]) if risk else None, verify_method, face_score),
     )
     db.commit()
 
@@ -1335,9 +1499,11 @@ def cashier_stats(db, merchant_id):
     redeemed = db.execute(
         "SELECT COUNT(*) AS n, COALESCE(SUM(monetary_value), 0) AS value FROM vouchers "
         "WHERE merchant_id = ? AND status = 'USED' AND redeemed_at >= ?", (merchant_id, since)).fetchone()
+    placeholders = ",".join("?" * len(REJECTED_OUTCOMES))
     rejected = db.execute(
-        "SELECT COUNT(*) FROM audit_log WHERE merchant_id = ? AND outcome != 'REDEEMED' AND created_at >= ?",
-        (merchant_id, since)).fetchone()[0]
+        f"SELECT COUNT(*) FROM audit_log WHERE merchant_id = ? AND outcome IN ({placeholders}) "
+        "AND created_at >= ?",
+        (merchant_id, *REJECTED_OUTCOMES, since)).fetchone()[0]
     outstanding = db.execute(
         "SELECT COUNT(*) AS n, COALESCE(SUM(monetary_value), 0) AS value FROM vouchers "
         "WHERE merchant_id = ? AND status = 'ACTIVE'", (merchant_id,)).fetchone()
@@ -1371,6 +1537,7 @@ def merchant_verify():
     if result and result["state"] == "active":
         result["risk"] = assess_redemption(db, result["voucher"], cashier["merchant_id"],
                                            client_rate_limit_key())
+        result["pickup"] = pickup_state(result["voucher"])
     return render_template("verify.html", result=result,
                            prefill=request.args.get("prefill", ""),
                            stats=cashier_stats(db, cashier["merchant_id"]),
@@ -1437,12 +1604,18 @@ def merchant_redeem():
         flash(f"Too many invalid codes. Wait {LOOKUP_WINDOW_MINUTES} minutes before trying again.", "danger")
         return redirect(url_for("merchant_verify"))
     result = evaluate_voucher(db, cashier, code, log=True, client_key=client_key)
+    pickup = pickup_state(result["voucher"]) if result["state"] == "active" else None
+    if pickup and not pickup["verified"]:
+        flash("Check the recipient first: match their face or confirm the one-time code.", "danger")
+        return redirect(url_for("merchant_verify", code=code))
     if result["state"] == "active":
         # Scored before the status flips, so this redemption does not count itself.
         risk = assess_redemption(db, result["voucher"], cashier["merchant_id"], client_key)
         # Atomic compare-and-set: only one request can flip ACTIVE -> USED.
+        # The faceprint and pickup code are deleted as soon as the gift is collected.
         cur = db.execute(
-            "UPDATE vouchers SET status = 'USED', redeemed_at = ? "
+            "UPDATE vouchers SET status = 'USED', redeemed_at = ?, face_print = NULL, "
+            "pickup_code_hash = NULL "
             "WHERE voucher_code = ? AND status = 'ACTIVE' AND merchant_id = ?",
             (utc_now(), code, cashier["merchant_id"]))
         db.commit()
@@ -1451,6 +1624,7 @@ def merchant_redeem():
             log_event(
                 db, code, cashier["merchant_id"], "REDEEMED", client_key=client_key,
                 menu_item_id=voucher["menu_item_id"], cashier=cashier["name"], risk=risk,
+                verify_method=pickup["method"] if pickup else None,
             )
             flash(f"{code} redeemed. Hand over the gift.", "success")
             if risk and risk["suspicious"]:
@@ -1466,6 +1640,106 @@ def merchant_redeem():
         flash(f"This voucher belongs to {result['other_store']}, not your store.", "danger")
     else:
         flash("Voucher code not found.", "danger")
+    return redirect(url_for("merchant_verify", code=code))
+
+
+@app.route("/merchant/face-check", methods=["POST"])
+def merchant_face_check():
+    """Compare the person at the till with the face the recipient registered."""
+    db = get_db()
+    cashier = authenticated_cashier(db)
+    if not cashier:
+        return jsonify(ok=False, message="Sign in to the cashier portal first."), 401
+    code = normalise_code(request.form.get("voucher_code", ""))
+    voucher = _cashier_voucher(db, cashier, code)
+    if voucher is None:
+        return jsonify(ok=False, message="This voucher cannot be redeemed here."), 404
+    state = pickup_state(voucher)
+    if not state or not state["enrolled"]:
+        return jsonify(ok=False, message="The recipient has not registered a face. Use a one-time code."), 409
+    if state["face_locked_out"]:
+        return jsonify(ok=False, message="Too many failed face checks. Use a one-time code."), 429
+    service = face_service()
+    if service is None:
+        return jsonify(ok=False, message="Face check is not available. Use a one-time code."), 503
+    data, problem = _face_photo()
+    if problem:
+        return jsonify(ok=False, message=problem), 400
+    try:
+        result = service.compare(service.from_text(voucher["face_print"]), service.decode_image(data))
+    except service.FaceError as exc:
+        return jsonify(ok=False, retry=True, message=str(exc)), 422
+    client_key = client_rate_limit_key()
+    if result.matched:
+        db.execute("UPDATE vouchers SET pickup_verified_at = ?, pickup_method = 'face' "
+                   "WHERE voucher_code = ? AND status = 'ACTIVE'", (utc_now(), code))
+        log_event(db, code, cashier["merchant_id"], "FACE_MATCH", client_key=client_key,
+                  menu_item_id=voucher["menu_item_id"], cashier=cashier["name"],
+                  verify_method="face", face_score=result.score)
+        return jsonify(ok=True, matched=True, score=result.score,
+                       message="Face matched. You can hand over the gift.")
+    db.execute("UPDATE vouchers SET face_failures = face_failures + 1 WHERE voucher_code = ?", (code,))
+    log_event(db, code, cashier["merchant_id"], "FACE_NO_MATCH", client_key=client_key,
+              menu_item_id=voucher["menu_item_id"], cashier=cashier["name"],
+              verify_method="face", face_score=result.score)
+    left = max(FACE_MAX_FAILURES - voucher["face_failures"] - 1, 0)
+    message = ("Face did not match. Do not hand over the gift. "
+               + (f"{left} more {'try' if left == 1 else 'tries'}, then use a one-time code."
+                  if left else "Use a one-time code to the recipient's phone instead."))
+    return jsonify(ok=True, matched=False, score=result.score, attempts_left=left, message=message)
+
+
+@app.route("/merchant/pickup-code/send", methods=["POST"])
+def merchant_send_pickup_code():
+    """Fallback: send a one-time code to the recipient's phone (simulated SMS)."""
+    db = get_db()
+    cashier = authenticated_cashier(db)
+    if not cashier:
+        return redirect(url_for("merchant_verify"))
+    code = normalise_code(request.form.get("voucher_code", ""))
+    voucher = _cashier_voucher(db, cashier, code)
+    if voucher is None or not voucher["face_lock"]:
+        flash("This voucher cannot be redeemed here.", "danger")
+        return redirect(url_for("merchant_verify", code=code))
+    pickup_code = f"{secrets.randbelow(10**6):06d}"
+    expires = (datetime.now(timezone.utc) + timedelta(minutes=PICKUP_CODE_MINUTES)).strftime("%Y-%m-%d %H:%M:%S")
+    db.execute("UPDATE vouchers SET pickup_code_hash = ?, pickup_code_expires_at = ?, pickup_code_attempts = 0 "
+               "WHERE voucher_code = ?", (_hash_pickup_code(code, pickup_code), expires, code))
+    log_event(db, code, cashier["merchant_id"], "CODE_SENT", client_key=client_rate_limit_key(),
+              menu_item_id=voucher["menu_item_id"], cashier=cashier["name"], verify_method="code")
+    flash(f"Demo SMS to {phone_filter(voucher['recipient_phone'])}: your Smart Gifting pickup code is "
+          f"{pickup_code}. (Simulated: in the real app only the recipient's phone sees this.)", "info")
+    return redirect(url_for("merchant_verify", code=code))
+
+
+@app.route("/merchant/pickup-code/check", methods=["POST"])
+def merchant_check_pickup_code():
+    db = get_db()
+    cashier = authenticated_cashier(db)
+    if not cashier:
+        return redirect(url_for("merchant_verify"))
+    code = normalise_code(request.form.get("voucher_code", ""))
+    voucher = _cashier_voucher(db, cashier, code)
+    if voucher is None:
+        flash("This voucher cannot be redeemed here.", "danger")
+        return redirect(url_for("merchant_verify", code=code))
+    state = pickup_state(voucher)
+    if not state or not state["code_live"]:
+        flash("The pickup code has expired or too many wrong codes were entered. Send a new code.", "warning")
+        return redirect(url_for("merchant_verify", code=code))
+    entered = re.sub(r"\D", "", request.form.get("pickup_code", ""))[:6]
+    client_key = client_rate_limit_key()
+    if entered and secrets.compare_digest(_hash_pickup_code(code, entered), voucher["pickup_code_hash"]):
+        db.execute("UPDATE vouchers SET pickup_verified_at = ?, pickup_method = 'code', pickup_code_hash = NULL "
+                   "WHERE voucher_code = ?", (utc_now(), code))
+        log_event(db, code, cashier["merchant_id"], "CODE_OK", client_key=client_key,
+                  menu_item_id=voucher["menu_item_id"], cashier=cashier["name"], verify_method="code")
+        flash("Pickup code correct. You can hand over the gift.", "success")
+    else:
+        db.execute("UPDATE vouchers SET pickup_code_attempts = pickup_code_attempts + 1 WHERE voucher_code = ?", (code,))
+        log_event(db, code, cashier["merchant_id"], "CODE_WRONG", client_key=client_key,
+                  menu_item_id=voucher["menu_item_id"], cashier=cashier["name"], verify_method="code")
+        flash("That pickup code is wrong. Ask the recipient to read it again.", "danger")
     return redirect(url_for("merchant_verify", code=code))
 
 
@@ -1486,7 +1760,8 @@ def ml_status():
         fraud = "Isolation Forest model loaded"
     else:
         fraud = "model NOT loaded, using fixed rules"
-    return f"[ml] recommender mode: {recommender}; fraud check: {fraud}"
+    face = "SFace face check ready" if face_service() is not None else "face check NOT available (OpenCV or model files missing)"
+    return f"[ml] recommender mode: {recommender}; fraud check: {fraud}; {face}"
 
 
 bootstrap()

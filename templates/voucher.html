@@ -40,6 +40,48 @@
                 <p class="small text-muted mb-0">The cashier will verify this code online before redemption.</p>
             </div>
 
+            {% if face %}
+            <div class="face-box face-box--{{ face }}" id="faceBox">
+                {% if face == 'registered' %}
+                <p class="face-box__head mb-1"><i class="bi bi-person-check-fill me-1" aria-hidden="true"></i>Face registered</p>
+                <p class="small mb-0">At the till, the cashier's camera checks it is you. Only a faceprint (numbers, not your photo) is stored, and it is deleted when you collect the gift.</p>
+                {% elif face == 'sender' %}
+                <p class="face-box__head mb-1"><i class="bi bi-person-lock me-1" aria-hidden="true"></i>Protected by a face check</p>
+                <p class="small mb-0">When {{ voucher.recipient_phone|phone }} opens this link, they register their face. Only they can collect the gift.</p>
+                {% elif face == 'unavailable' %}
+                <p class="face-box__head mb-1"><i class="bi bi-person-lock me-1" aria-hidden="true"></i>Protected gift</p>
+                <p class="small mb-0">At the till, the cashier will send a one-time code to your phone to confirm it is you.</p>
+                {% else %}
+                <p class="face-box__head mb-1"><i class="bi bi-person-bounding-box me-1" aria-hidden="true"></i>Register your face to protect this gift</p>
+                <p class="small mb-3">{{ voucher.sender_name }} asked that only you can collect it. Take one selfie now; the cashier's camera will check it is you at pickup.</p>
+                <div data-face-capture data-endpoint="{{ url_for('register_face', voucher_code=voucher.voucher_code) }}"
+                     data-success-reload="true" data-require-consent="#faceConsent">
+                    {{ csrf_field() }}
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="faceConsent" name="consent" value="yes">
+                        <label class="form-check-label small" for="faceConsent">
+                            I agree that Smart Gifting stores a faceprint (a list of numbers made from my photo, not the photo itself)
+                            only to confirm it is me at pickup. It is deleted when I collect the gift.
+                        </label>
+                    </div>
+                    <div class="face-cam" hidden>
+                        <video playsinline muted autoplay></video>
+                        <div class="face-cam__guide" aria-hidden="true"></div>
+                    </div>
+                    <div class="d-grid gap-2">
+                        <button type="button" class="btn btn-primary" data-face-start><i class="bi bi-camera me-2" aria-hidden="true"></i>Open camera</button>
+                        <button type="button" class="btn btn-primary" data-face-shoot hidden><i class="bi bi-person-check me-2" aria-hidden="true"></i>Take selfie and register</button>
+                        <label class="btn btn-outline-dark mb-0" data-face-file-label>
+                            <i class="bi bi-image me-2" aria-hidden="true"></i>Or choose a selfie
+                            <input type="file" accept="image/*" capture="user" data-face-file hidden>
+                        </label>
+                    </div>
+                    <p class="face-msg small mt-2 mb-0" role="status" aria-live="polite"></p>
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
+
             <dl class="ticket__meta">
                 <div><dt>Sent to</dt><dd>{{ voucher.recipient_phone|phone }}</dd></div>
                 <div><dt>Created</dt><dd>{{ voucher.created_at|eat("%d %b %Y") }}</dd></div>

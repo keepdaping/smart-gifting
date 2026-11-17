@@ -67,6 +67,18 @@
                     <div class="invalid-feedback">{{ errors.message }}</div>
                 </div>
 
+                <div class="face-lock-option mb-4">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" role="switch" id="face_lock" name="face_lock" value="1"
+                               {{ 'checked' if form.face_lock }}>
+                        <label class="form-check-label fw-semibold" for="face_lock">
+                            <i class="bi bi-person-bounding-box me-1" aria-hidden="true"></i>Only the recipient can collect it
+                        </label>
+                    </div>
+                    <p class="small text-muted mb-0 mt-1">When they open the gift link, they register their face. At pickup, the cashier's
+                        camera checks it is them. If the face check cannot be used, the cashier sends a one-time code to their phone instead.</p>
+                </div>
+
                 <fieldset class="mb-4">
                     <legend class="form-label">Choose a demo payment method</legend>
                     <div class="row g-2">
@@ -111,7 +123,7 @@
 
                 <ul class="assure">
                     <li><i class="bi bi-shield-check"></i> Works once, at {{ product.merchant_name }} only</li>
-                    <li><i class="bi bi-person-badge"></i> Cashier checks the code before handing over the gift</li>
+                    <li><i class="bi bi-person-badge"></i> Cashier checks the code, and the recipient's face, before handing over the gift</li>
                     <li><i class="bi bi-chat-dots"></i> Share by WhatsApp or SMS right after paying</li>
                 </ul>
             </div>

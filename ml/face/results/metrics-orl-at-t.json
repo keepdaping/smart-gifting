@@ -1,0 +1,19 @@
+{
+  "dataset": "ORL (AT&T)",
+  "people": 40,
+  "photos_used": 400,
+  "photos_skipped": 0,
+  "genuine_pairs": 1800,
+  "impostor_pairs": 78000,
+  "threshold": 0.363,
+  "far": 0.00176,
+  "frr": 0.0,
+  "false_accepts": 137,
+  "false_rejects": 0,
+  "roc_auc": 1.0,
+  "eer": 0.00055,
+  "eer_threshold": 0.404,
+  "genuine_mean": 0.823,
+  "impostor_mean": 0.08,
+  "impostor_max": 0.493
+}

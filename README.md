@@ -122,6 +122,21 @@ catalogue entries continue to use branded icon tiles unless an image is configur
 Build command `pip install -r requirements.txt`, start command from the `Procfile`. Set `SECRET_KEY`
 and `CASHIER_PIN` in the dashboard.
 
+## Face check at pickup
+
+When buying, the sender can choose **"Only the recipient can collect it"** (on by default).
+
+1. The recipient opens the gift link, agrees to the consent note and takes one selfie. The server keeps
+   only a 128-number faceprint, never the photo. The sender's own browser cannot register a face.
+2. At the till, the cashier opens the camera and checks the customer's face. The **Redeem** button stays
+   locked until the face matches (or the fallback below succeeds).
+3. **Fallback:** if no face was registered, the camera is not available, or the face fails three times,
+   the cashier sends a one-time code to the recipient's phone (simulated SMS in the demo).
+4. The faceprint is deleted as soon as the gift is collected. Every check is written to the audit trail.
+
+Models: OpenCV YuNet (face detection) and SFace (face recognition), both pre-trained, in `ml/face/models/`.
+Evaluation: `python -m ml.face.evaluate <folder>`; results in `ml/face/results.md`.
+
 ## Store menus and photos
 
 Menus for the other stores live in `store_menus.py` (same row format as `kfc_menu.py`).

@@ -3753,3 +3753,17 @@ h1, h2, h3, h4, h5,
     .finder-panel #finderResults > div,
     .finder-panel .finder__status:not(:empty) { animation: none !important; }
 }
+
+/* Face check ----------------------------------------------------------- */
+.face-lock-option { padding: 1rem 1.1rem; background: var(--sg-soft); border: 1px solid var(--sg-line); border-radius: var(--sg-radius-sm, .75rem); }
+.face-lock-option .form-check-input { width: 2.4em; height: 1.25em; }
+.face-box { margin: 1rem 0; padding: 1rem 1.1rem; background: #fff; border: 1px solid var(--sg-line); border-radius: var(--sg-radius-sm, .75rem); text-align: left; }
+.face-box--registered { background: #ecf7f1; border-color: #bfe3cf; }
+.face-box__head { font-weight: 700; color: var(--sg-ink); }
+.face-cam { position: relative; margin: 0 auto .75rem; max-width: 360px; aspect-ratio: 4 / 3; overflow: hidden; background: #0f1c17; border-radius: 14px; }
+.face-cam video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+.face-cam__guide { position: absolute; inset: 12% 28%; border: 3px dashed rgb(255 255 255 / 70%); border-radius: 50%; }
+.pickup-check { margin: 1rem 0; padding: 1rem; background: #fff; border: 1px solid var(--sg-line); border-radius: .75rem; }
+.pickup-check--ok { background: #ecf7f1; border-color: #bfe3cf; }
+.pickup-check__head { margin-bottom: .5rem; font-weight: 700; }
+.pickup-code summary { cursor: pointer; color: var(--sg-primary); }
